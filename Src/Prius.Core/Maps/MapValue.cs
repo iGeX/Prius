@@ -87,25 +87,27 @@ public readonly struct MapValue : IEquatable<MapValue>
     public static implicit operator MapValue(bool value) => new(value);
     public static implicit operator MapValue(decimal value) => new(value);
     public static implicit operator MapValue(DateTimeOffset value) => new(value);
+    
 
     public static implicit operator string(MapValue value) => value._type == MapValueType.String 
         ? (string)value._content! 
-        : string.Empty;
+        : value.AsValue<string>();
 
     public static implicit operator long(MapValue value) => value._type == MapValueType.Long 
         ? (long)value._content! 
-        : 0L;
+        : value.AsValue<long>();
 
     public static implicit operator bool(MapValue value) => value._type == MapValueType.Boolean 
-        && (bool)value._content!;
+        ? (bool)value._content!
+        : value.AsValue<bool>();
 
     public static implicit operator decimal(MapValue value) => value._type == MapValueType.Decimal 
         ? (decimal)value._content! 
-        : 0m;
+        : value.AsValue<decimal>();
 
     public static implicit operator DateTimeOffset(MapValue value) => value._type == MapValueType.DateTimeOffset 
         ? (DateTimeOffset)value._content! 
-        : DateTimeOffset.MinValue;
+        : value.AsValue<DateTimeOffset>();
 
     public void Switch(
         Action<Empty> onEmpty,
