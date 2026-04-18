@@ -1,0 +1,38 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution Items", "{089100B1-113F-4E66-888A-E83F3999EAFD}"
+	ProjectSection(SolutionItems) = preProject
+		.dockerignore = .dockerignore
+		.editorconfig = .editorconfig
+		.gitignore = .gitignore
+		Directory.Build.props = Directory.Build.props
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Src", "Src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Prius.Core", "Src\Prius.Core\Prius.Core.csproj", "{7BA3DA5F-9E34-24CB-3E6B-7D582A63513B}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Tests", "Tests", "{0AB3BF05-4346-4AA6-1389-037BE0695223}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Prius.Core.Tests", "Tests\Prius.Core.Tests\Prius.Core.Tests.csproj", "{87F91EC7-80EE-4492-85BF-F80F29C243BF}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{7BA3DA5F-9E34-24CB-3E6B-7D582A63513B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7BA3DA5F-9E34-24CB-3E6B-7D582A63513B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7BA3DA5F-9E34-24CB-3E6B-7D582A63513B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7BA3DA5F-9E34-24CB-3E6B-7D582A63513B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{87F91EC7-80EE-4492-85BF-F80F29C243BF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{87F91EC7-80EE-4492-85BF-F80F29C243BF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{87F91EC7-80EE-4492-85BF-F80F29C243BF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{87F91EC7-80EE-4492-85BF-F80F29C243BF}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{7BA3DA5F-9E34-24CB-3E6B-7D582A63513B} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{87F91EC7-80EE-4492-85BF-F80F29C243BF} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+	EndGlobalSection
+EndGlobal
