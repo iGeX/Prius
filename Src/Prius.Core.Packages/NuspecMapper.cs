@@ -15,46 +15,40 @@ public static class NuspecMapper
         if (metadata == null) return rootMap;
 
         var info = DictionaryMap.New;
-        info.Put("Id", metadata.Element(ns + "id")?.Value ?? string.Empty);
-        info.Put("Version", metadata.Element(ns + "version")?.Value ?? string.Empty);
-        info.Put("Authors", metadata.Element(ns + "authors")?.Value ?? string.Empty);
-        info.Put("Description", metadata.Element(ns + "description")?.Value ?? string.Empty);
-        info.Put("ProjectUrl", metadata.Element(ns + "projectUrl")?.Value ?? string.Empty);
-        info.Put("Icon", metadata.Element(ns + "icon")?.Value ?? string.Empty);
-        info.Put("Tags", metadata.Element(ns + "tags")?.Value ?? string.Empty);
-        info.Put("License", metadata.Element(ns + "license")?.Value ?? string.Empty);
-        
+        foreach (var element in metadata.Elements())
+        {
+            if (element.Name.LocalName == "dependencies" || element.Name.LocalName == "repository") 
+                continue;
+            
+            info.Put(element.Name.LocalName, element.Value);
+        }
+
         var repo = metadata.Element(ns + "repository");
         if (repo != null)
         {
             var repoMap = DictionaryMap.New;
-            repoMap.Put("Type", repo.Attribute("type")?.Value ?? string.Empty);
-            repoMap.Put("Url", repo.Attribute("url")?.Value ?? string.Empty);
-            repoMap.Put("Commit", repo.Attribute("commit")?.Value ?? string.Empty);
-            info.Put("Repository", repoMap);
+            foreach (var attr in repo.Attributes())
+                repoMap.Put(attr.Name.LocalName, attr.Value);
+            
+            info.Put("repository", repoMap);
         }
         rootMap.Put("Info", info);
 
         var dependenciesNode = metadata.Element(ns + "dependencies");
-        if (dependenciesNode != null)
-        {
-            var depsMap = DictionaryMap.New;
-            var groups = dependenciesNode.Elements(ns + "group").ToList();
+        if (dependenciesNode == null) 
+            return rootMap;
+        
+        var depsMap = DictionaryMap.New;
+        var groups = dependenciesNode.Elements(ns + "group").ToList();
 
-            if (groups.Count > 0)
-            {
-                foreach (var group in groups)
-                {
-                    var tfm = group.Attribute("targetFramework")?.Value ?? "any";
-                    depsMap.Put(tfm, ParseDependencyGroup(group, ns));
-                }
-            }
-            else
-            {
-                depsMap.Put("any", ParseDependencyGroup(dependenciesNode, ns));
-            }
-            rootMap.Put("Dependencies", depsMap);
+        if (groups.Count > 0)
+        {
+            foreach (var group in groups)
+                depsMap.Put(group.Attribute("targetFramework")?.Value ?? "any", ParseDependencyGroup(group, ns));
         }
+        else
+            depsMap.Put("any", ParseDependencyGroup(dependenciesNode, ns));
+        rootMap.Put("Dependencies", depsMap);
 
         return rootMap;
     }
@@ -68,16 +62,11 @@ public static class NuspecMapper
             if (string.IsNullOrEmpty(id)) continue;
 
             var depInfo = DictionaryMap.New;
-            depInfo.Put("Version", dep.Attribute("version")?.Value ?? "0.0.0");
-            
-            var include = dep.Attribute("include")?.Value;
-            if (!string.IsNullOrEmpty(include)) depInfo.Put("Include", include);
-
-            var exclude = dep.Attribute("exclude")?.Value;
-            if (!string.IsNullOrEmpty(exclude)) depInfo.Put("Exclude", exclude);
-
-            var privateAssets = dep.Attribute("privateAssets")?.Value;
-            if (!string.IsNullOrEmpty(privateAssets)) depInfo.Put("PrivateAssets", privateAssets);
+            foreach (var attr in dep.Attributes())
+            {
+                if (attr.Name.LocalName == "id") continue;
+                depInfo.Put(attr.Name.LocalName, attr.Value);
+            }
 
             groupMap.Put(id, depInfo);
         }

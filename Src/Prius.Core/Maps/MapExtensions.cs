@@ -9,6 +9,34 @@ namespace Prius.Core.Maps;
 
 public static class MapExtensions
 {
+    private static readonly string[] IndexCache = Enumerable.Range(0, 1024)
+        .Select(i => i.ToString())
+        .ToArray();
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static string ToIndexString(this int i)
+    {
+        if ((uint)i < (uint)IndexCache.Length)
+            return IndexCache[i];
+
+        return i.ToString();
+    }
+    
+    public static IEnumerable<string> GetReverseOrder(this IMap orderMap)
+    {
+        if (orderMap.IsEmpty) 
+            yield break;
+        
+        for (var i = orderMap.Values.Count() - 1; i >= 0; i--)
+        {
+            var indexKey = i.ToIndexString();
+            var value = orderMap.Get(indexKey);
+        
+            if (!value.IsEmpty)
+                yield return value.AsValue<string>();
+        }
+    }
+    
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static T LongTo<T>(long l) => typeof(T) switch
     {
@@ -422,6 +450,8 @@ public static class MapExtensions
             path = path.Tail;
         }
     }
+
+    public static void DeepPut(this IMap map, MapPath path, IMap value) => map.DeepPut(path,  new MapValue(value));
 
     public static void DeepPut(this IMap map, MapPath path, MapValue value)
     {
