@@ -1,4 +1,6 @@
-﻿namespace Prius.Core.Maps;
+﻿using System.Collections;
+
+namespace Prius.Core.Maps;
 
 public sealed class ListMap(IList list) : IMap
 {

@@ -1,4 +1,11 @@
-﻿namespace Prius.Core.Maps;
+﻿using System.Collections;
+using System.Globalization;
+using System.Runtime.CompilerServices;
+using System.Text;
+using System.Text.Json;
+using Prius.Core.Json;
+
+namespace Prius.Core.Maps;
 
 public static class MapExtensions
 {

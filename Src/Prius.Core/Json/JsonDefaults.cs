@@ -1,4 +1,8 @@
-﻿namespace Prius.Core.Json;
+﻿using System.Text.Encodings.Web;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace Prius.Core.Json;
 
 public static class JsonDefaults
 {

@@ -1,4 +1,6 @@
-﻿namespace Prius.Core.Maps;
+﻿using System.Runtime.CompilerServices;
+
+namespace Prius.Core.Maps;
 
 public ref struct MapPath
 {

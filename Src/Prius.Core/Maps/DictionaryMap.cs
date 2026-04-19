@@ -1,4 +1,6 @@
-﻿namespace Prius.Core.Maps;
+﻿using System.Collections;
+
+namespace Prius.Core.Maps;
 
 public sealed class DictionaryMap(IDictionary dictionary) : IMap
 {

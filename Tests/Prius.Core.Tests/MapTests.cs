@@ -1,4 +1,7 @@
-﻿namespace Prius.Core.Tests;
+﻿using Prius.Core.Maps;
+using Xunit;
+
+namespace Prius.Core.Tests;
 
 public class MapTests
 {

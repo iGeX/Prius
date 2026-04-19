@@ -1,4 +1,7 @@
-﻿namespace Prius.Core.Maps;
+﻿using System.Text;
+using System.Text.Json;
+
+namespace Prius.Core.Maps;
 
 public sealed class JsonReaderMap(ReadOnlyMemory<byte> data) : IMap
 {

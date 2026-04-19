@@ -1,3 +1,7 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Text.Json.Serialization.Metadata;
+
 namespace Prius.Core.Json;
 
 public sealed class PocoModelTypeInfoResolver : DefaultJsonTypeInfoResolver
