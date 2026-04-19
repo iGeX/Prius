@@ -1,0 +1,11 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <OutputType>Library</OutputType>
+        <Description>Prius.Core.Packages</Description>
+        <RootNamespace>Prius.Core.Packages</RootNamespace>
+    </PropertyGroup>
+  
+    <ItemGroup>
+      <ProjectReference Include="..\Prius.Core\Prius.Core.csproj" />
+    </ItemGroup>
+</Project>
