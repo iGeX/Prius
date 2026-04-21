@@ -8,7 +8,7 @@ public sealed class EmptyMap : IMap
 
     private EmptyMap() { }
     
-    public IEnumerable<string> Keys(bool? ascending) => [];
+    public IEnumerable<string> Keys(bool? ascending = null) => [];
     
     public IEnumerable<MapValue> Values => [];
 

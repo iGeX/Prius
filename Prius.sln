@@ -20,6 +20,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Prius.Core.Packages", "Src\
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Prius.Core.Packages.Tests", "Tests\Prius.Core.Packages.Tests\Prius.Core.Packages.Tests.csproj", "{B6191B43-7F5A-4E3F-BEA7-7063C6100E09}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Prius.Core.Packages.Registry", "Src\Prius.Core.Packages.Registry\Prius.Core.Packages.Registry.csproj", "{C7D45C55-B35A-48B2-B00E-70A59FDF828F}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -42,11 +44,16 @@ Global
 		{B6191B43-7F5A-4E3F-BEA7-7063C6100E09}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B6191B43-7F5A-4E3F-BEA7-7063C6100E09}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B6191B43-7F5A-4E3F-BEA7-7063C6100E09}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C7D45C55-B35A-48B2-B00E-70A59FDF828F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C7D45C55-B35A-48B2-B00E-70A59FDF828F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C7D45C55-B35A-48B2-B00E-70A59FDF828F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C7D45C55-B35A-48B2-B00E-70A59FDF828F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{7BA3DA5F-9E34-24CB-3E6B-7D582A63513B} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{87F91EC7-80EE-4492-85BF-F80F29C243BF} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
 		{E9D6C7B5-F438-47F9-9B38-DD1D627464B6} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{B6191B43-7F5A-4E3F-BEA7-7063C6100E09} = {0AB3BF05-4346-4AA6-1389-037BE0695223}
+		{C7D45C55-B35A-48B2-B00E-70A59FDF828F} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

@@ -1,4 +1,5 @@
 ﻿using System.Collections;
+using System.Runtime.CompilerServices;
 
 namespace Prius.Core.Maps;
 
@@ -27,7 +28,7 @@ public sealed class DictionaryMap(IDictionary dictionary) : IMap
             onDateTimeOffset: val => dictionary[key] = val
         );
 
-    public IEnumerable<string> Keys(bool? ascending)
+    public IEnumerable<string> Keys(bool? ascending = null)
     {
         var enm = StringKeys;
         if (ascending.HasValue)
@@ -40,4 +41,18 @@ public sealed class DictionaryMap(IDictionary dictionary) : IMap
     public override bool Equals(object? obj) => obj is IMap other && this.DeepEquals(other);
     
     public override int GetHashCode() => this.MapHashCode();
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static DictionaryMap From(string key, MapValue value) => New.With(key, value);
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static DictionaryMap From(params (string Key, MapValue Value)[] items) => From((IEnumerable<(string Key, MapValue Value)>) items);
+
+    public static DictionaryMap From(IEnumerable<(string Key, MapValue Value)> items)
+    {
+        var map = New;
+        foreach (var (key, value) in items)
+            map.Put(key, value);
+        return map;
+    }
 }

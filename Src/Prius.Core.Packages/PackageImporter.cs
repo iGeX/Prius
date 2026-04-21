@@ -36,10 +36,10 @@ public static class PackageImporter
                 assetPath += t;
 
             var fileInfo = DictionaryMap.New;
-            fileInfo.Put("Size", entry.Length);
+            fileInfo.Put("size", entry.Length);
             
             using (var entryStream = entry.Open())
-                fileInfo.Put("Hash", ComputeHash(entryStream));
+                fileInfo.Put("hash", ComputeHash(entryStream));
 
             packageMap.DeepPut(assetPath, fileInfo);
         }

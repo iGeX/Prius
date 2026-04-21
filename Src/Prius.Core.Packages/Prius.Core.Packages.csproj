@@ -3,6 +3,7 @@
         <OutputType>Library</OutputType>
         <Description>Prius.Core.Packages</Description>
         <RootNamespace>Prius.Core.Packages</RootNamespace>
+        <IsPackable>true</IsPackable>
     </PropertyGroup>
   
     <ItemGroup>

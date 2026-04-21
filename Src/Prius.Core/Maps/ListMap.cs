@@ -29,7 +29,7 @@ public sealed class ListMap(IList list) : IMap
         );
     }
 
-    public IEnumerable<string> Keys(bool? ascending)
+    public IEnumerable<string> Keys(bool? ascending = null)
     {
         var result = Enumerable.Range(0, list.Count);
         if (ascending == false)

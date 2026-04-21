@@ -5,6 +5,7 @@
         <RootNamespace>Prius.Core</RootNamespace>
         <TargetFramework>netstandard2.1</TargetFramework>
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <IsPackable>true</IsPackable>
     </PropertyGroup>
 
     <ItemGroup>

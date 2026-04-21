@@ -4,7 +4,7 @@ public sealed class StackedMap(IEnumerable<IMap> maps) : IMap
 {
     private readonly IEnumerable<IMap> _maps = maps ?? throw new ArgumentNullException(nameof(maps));
 
-    public bool IsEmpty => !Keys(null).Any();
+    public bool IsEmpty => !Keys().Any();
     
     public MapValue Get(string key)
     {
@@ -26,7 +26,7 @@ public sealed class StackedMap(IEnumerable<IMap> maps) : IMap
             map.Put(key, value);
     }
 
-    public IEnumerable<string> Keys(bool? ascending)
+    public IEnumerable<string> Keys(bool? ascending = null)
     {
         var enm = _maps.SelectMany(m => m.Keys()).Distinct();
         if (ascending != null)
@@ -34,7 +34,7 @@ public sealed class StackedMap(IEnumerable<IMap> maps) : IMap
         return enm;
     }
 
-    public IEnumerable<MapValue> Values => Keys(null).Select(Get);
+    public IEnumerable<MapValue> Values => Keys().Select(Get);
 
     public static StackedMap New(params IMap[] maps) => new(maps);
 

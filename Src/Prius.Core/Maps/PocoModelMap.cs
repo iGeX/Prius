@@ -22,7 +22,7 @@ public sealed class PocoModelMap : IMap
 
     public bool IsEmpty => _props.Length == 0;
 
-    public IEnumerable<string> Keys(bool? ascending)
+    public IEnumerable<string> Keys(bool? ascending = null)
     {
         var keys = _props.Select(p => p.Name);
         if (ascending.HasValue)

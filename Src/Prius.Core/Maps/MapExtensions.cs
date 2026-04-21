@@ -22,6 +22,7 @@ public static class MapExtensions
         return i.ToString();
     }
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static IEnumerable<string> GetReverseOrder(this IMap orderMap)
     {
         if (orderMap.IsEmpty) 
@@ -162,6 +163,7 @@ public static class MapExtensions
         _ => EmptyMap.Instance,
         _ => EmptyMap.Instance);
   
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static TResult Match<TResult>(
         this MapValue mapValue,
         Func<Empty, TResult> onEmpty,
@@ -175,6 +177,7 @@ public static class MapExtensions
             d => onValue(d),
             dt => onValue(dt));
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Switch(
         this MapValue mapValue,
         Action<Empty> onEmpty,
@@ -189,31 +192,20 @@ public static class MapExtensions
             d => onValue(d),
             dt => onValue(dt));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Switch(
         this MapValue mapValue,
         Action<IMap> onMap,
         Action<object> onValue) =>
         mapValue.Switch(_ => { }, onMap, onValue);
     
-    public static MapValue Get(this IMap? map, params string[] keys) => map.Get((IEnumerable<string>)keys);
-
-    public static MapValue Get(this IMap? map, IEnumerable<string> keys)
-    {
-        if (map == null) return Empty.Instance;
-        
-        var current = new MapValue(map);
-        foreach (var key in keys)
-        {
-            current = current.AsMap().Get(key);
-            if (current.IsEmpty) break;
-        }
-        return current;
-    }
-    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void Put(this IMap? map, string key, IMap subMap) => map?.Put(key, new MapValue(subMap));
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void PutEmpty(this IMap? map, string key) => map?.Put(key, Empty.Instance);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static IMap GetAll(this IMap? map, IEnumerable<string> keys)
     {
         if (map == null) 
@@ -229,10 +221,26 @@ public static class MapExtensions
         return new DictionaryMap(dict);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void PutAll(this IMap? map, IEnumerable<string> keys, IMap source)
     {
         foreach (var key in keys)
             map?.Put(key, source.Get(key));
+    }
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static DictionaryMap With(this DictionaryMap map, string key, MapValue value)
+    {
+        map.Put(key, value);
+        return map;
+    }
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static DictionaryMap With(this DictionaryMap map, params (string Key, MapValue Value)[] items)
+    {
+        foreach (var (key, value) in items)
+            map.Put(key, value);
+        return map;
     }
     
     public static Dictionary<string, object?> DeepCopy(this IMap map)
@@ -274,6 +282,7 @@ public static class MapExtensions
         return result;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static MapValue ToMapValue(this object? obj) => obj switch
     {
         null or Empty => Empty.Instance,
@@ -308,6 +317,7 @@ public static class MapExtensions
         DoSerialize(map, writer);
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static string Serialize(this IMap map)
     {
         using var stream = new MemoryStream();
@@ -315,6 +325,7 @@ public static class MapExtensions
         return Encoding.UTF8.GetString(stream.GetBuffer(), 0, (int)stream.Length);
     }
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void DoSerialize(IMap map, Utf8JsonWriter writer)
     {
         writer.WriteStartObject();
@@ -326,6 +337,7 @@ public static class MapExtensions
         writer.WriteEndObject();
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void WriteMapValue(this Utf8JsonWriter writer, MapValue mapValue) => mapValue.Switch(
         _ => writer.WriteNullValue(),
         map => DoSerialize(map, writer),
@@ -335,6 +347,7 @@ public static class MapExtensions
         writer.WriteNumberValue,
         dt => writer.WriteStringValue(dt.ToString("O")));
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static int MapHashCode(this IMap map)
     {
         var hash = new HashCode();
@@ -427,6 +440,7 @@ public static class MapExtensions
         onDateTimeOffset: dt => dt == valR.AsValue<DateTimeOffset>()
     );
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static IAsyncMap AsAsync(this IMap map) => new AsyncMapAdapter(map);
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -451,6 +465,7 @@ public static class MapExtensions
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static void DeepPut(this IMap map, MapPath path, IMap value) => map.DeepPut(path,  new MapValue(value));
 
     public static void DeepPut(this IMap map, MapPath path, MapValue value)

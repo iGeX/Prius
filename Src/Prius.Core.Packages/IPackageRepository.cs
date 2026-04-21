@@ -9,6 +9,12 @@ namespace Prius.Core.Packages;
 public interface IPackageRepository
 {
     /// <summary>
+    /// Retrieves all unique package identifiers available in the repository.
+    /// Output: Map { "newtonsoft.json": true, "prius.core": true }
+    /// </summary>
+    ValueTask<IMap> GetPackagesAsync(CancellationToken ct = default);
+    
+    /// <summary>
     /// Retrieves a set of available versions for the requested package identifiers.
     /// </summary>
     /// <param name="tfm">The Target Framework Moniker (e.g., "net8.0", "netstandard2.1") to filter compatible versions.</param>

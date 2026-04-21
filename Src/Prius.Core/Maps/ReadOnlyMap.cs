@@ -20,7 +20,7 @@ internal sealed class ReadOnlyMap(IMap source) : IMap
     {
     }
 
-    public IEnumerable<string> Keys(bool? ascending) => source.Keys(ascending);
+    public IEnumerable<string> Keys(bool? ascending = null) => source.Keys(ascending);
     
     public bool Equals(IMap? other) => this.DeepEquals(other);
     
