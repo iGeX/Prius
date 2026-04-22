@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.Caching.Memory;
+﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 using Prius.Core.Maps;
 
 namespace Prius.Core.Packages.Registry;
@@ -36,7 +37,8 @@ public static class PackagesRegistryExtensions
             // Используем новый DictionaryMap.From с кортежем
             var manifests = await repo.GetManifestsAsync("any", DictionaryMap.From((id, version)), ct);
             var manifest = manifests.Get(id).AsMap();
-            if (manifest.IsEmpty) return Results.NotFound();
+            if (manifest.IsEmpty) 
+                return Results.NotFound();
 
             using var ms = new MemoryStream();
             await PackageExporter.ExportAsync(manifest, repo, ms, ct);
@@ -53,7 +55,8 @@ public static class PackagesRegistryExtensions
             
             var versionsMap = await repo.GetVersionsAsync("any", DictionaryMap.From((id, true)), ct);
             var versions = versionsMap.Get(id).AsMap();
-            if (versions.IsEmpty) return Results.NotFound();
+            if (versions.IsEmpty) 
+                return Results.NotFound();
 
             var leafs = versions.Keys().Select(v => new RegistrationLeafDto(
                 $"{baseUrl}/metadata/{id}/{v}.json",
@@ -66,6 +69,45 @@ public static class PackagesRegistryExtensions
             ]);
 
             return Results.Json(root, RegistryJsonContext.Default.RegistrationRootDto);
+        });
+        
+        endpoints.MapGet($"{routePrefix}/query", async (
+            [FromQuery(Name = "q")] string? query, 
+            [FromQuery] int skip, 
+            [FromQuery] int take, 
+            IPackageRepository repo, 
+            ILoggerFactory loggerFactory,
+            CancellationToken ct) =>
+        {
+            var logger = loggerFactory.CreateLogger("Prius.Registry.Search");
+            if(logger.IsEnabled(LogLevel.Debug))
+                logger.LogDebug("Search request received: q='{Query}', skip={Skip}, take={Take}", query, skip, take);
+
+            var allPackages = await repo.GetPackagesAsync(ct);
+    
+            // Фильтрация по подстроке (case-insensitive)
+            var filtered = allPackages.Keys()
+                .Where(p => string.IsNullOrEmpty(query) || p.Contains(query, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            var results = filtered
+                .Skip(skip)
+                .Take(take)
+                .Select(id => new
+                {
+                    id,
+                    version = "1.0.0", // Базовая версия для превью
+                    description = $"Package {id} hosted on Prius Directory Registry",
+                    authors = "Prius"
+                    // Здесь можно вытянуть метаданные из GetManifestsAsync, если нужно больше деталей
+                })
+                .ToList();
+
+            return Results.Ok(new
+            {
+                totalHits = filtered.Count,
+                data = results
+            });
         });
 
         return endpoints;
