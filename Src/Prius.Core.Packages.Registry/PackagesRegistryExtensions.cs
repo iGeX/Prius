@@ -19,10 +19,15 @@ public static class PackagesRegistryExtensions
         {
             var baseUrl = $"{context.Request.Scheme}://{context.Request.Host}/{routePrefix}";
             var response = new ServiceIndexDto("3.0.0", [
-                new ServiceResourceDto($"{baseUrl}/query", "SearchQueryService/3.4.0", "Search", NugetClientVersion),
-                new ServiceResourceDto($"{baseUrl}/autocomplete", "SearchAutocompleteService/3.0.0", "Autocomplete", NugetClientVersion),
-                new ServiceResourceDto($"{baseUrl}/metadata", "RegistrationsBaseUrl/3.6.0", "Metadata", NugetClientVersion),
-                new ServiceResourceDto($"{baseUrl}/content", "PackageBaseAddress/3.0.0", "Download", NugetClientVersion)
+                new($"{baseUrl}/query", "SearchQueryService", "Search", NugetClientVersion),
+                new($"{baseUrl}/query", "SearchQueryService/3.0.0", "Search", NugetClientVersion),
+                new($"{baseUrl}/query", "SearchQueryService/3.4.0", "Search", NugetClientVersion),
+                new($"{baseUrl}/autocomplete", "SearchAutocompleteService", "Autocomplete", NugetClientVersion),
+                new($"{baseUrl}/metadata/", "RegistrationsBaseUrl", "Metadata", NugetClientVersion),
+                new($"{baseUrl}/metadata/", "RegistrationsBaseUrl/3.0.0-rc", "Metadata", NugetClientVersion),
+                new($"{baseUrl}/metadata/", "RegistrationsBaseUrl/3.4.0", "Metadata", NugetClientVersion),
+                new($"{baseUrl}/metadata/", "RegistrationsBaseUrl/3.6.0", "Metadata", NugetClientVersion),
+                new($"{baseUrl}/content/", "PackageBaseAddress/3.0.0", "Download", NugetClientVersion)
             ]);
 
             return Results.Json(response, RegistryJsonContext.Default.ServiceIndexDto);
