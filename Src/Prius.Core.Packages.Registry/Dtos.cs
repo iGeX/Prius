@@ -9,7 +9,8 @@ public record ServiceIndexDto(
 public record ServiceResourceDto(
     [property: JsonPropertyName("@id")] string Id,
     [property: JsonPropertyName("@type")] string Type,
-    [property: JsonPropertyName("comment")] string Comment);
+    [property: JsonPropertyName("comment")] string Comment,
+    [property: JsonPropertyName("clientVersion")] string ClientVersion);
 
 public record RegistrationRootDto(
     [property: JsonPropertyName("count")] int Count,

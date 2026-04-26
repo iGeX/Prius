@@ -1,9 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk.Web">
     <PropertyGroup>
-        <Description>Prius.Core.Packages.Registry</Description>
-        <RootNamespace>Prius.Core.Packages.Registry</RootNamespace>
         <OutputType>Library</OutputType>
-        <IsPackable>true</IsPackable>
     </PropertyGroup>
   
     <ItemGroup>

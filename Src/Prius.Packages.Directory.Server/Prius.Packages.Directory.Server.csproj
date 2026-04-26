@@ -1,8 +1,4 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
-    <PropertyGroup>
-      <Description>Prius.Core.Packages.Registry.Server</Description>
-      <RootNamespace>Prius.Core.Packages.Registry.Server</RootNamespace>
-    </PropertyGroup>
     <ItemGroup>
       <ProjectReference Include="..\Prius.Core.Packages.Registry\Prius.Core.Packages.Registry.csproj" />
     </ItemGroup>

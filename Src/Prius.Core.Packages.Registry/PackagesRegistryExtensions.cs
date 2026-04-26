@@ -1,11 +1,12 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Caching.Memory;
+﻿using Microsoft.Extensions.Caching.Memory;
 using Prius.Core.Maps;
 
 namespace Prius.Core.Packages.Registry;
 
 public static class PackagesRegistryExtensions
 {
+    private const string NugetClientVersion = "7.3.1";
+    
     public static IServiceCollection AddPackagesRegistry(this IServiceCollection services, Action<MemoryCacheOptions>? cacheSetup = null) => 
         services.AddMemoryCache(cacheSetup ?? (options => options.SizeLimit = 512 * 1024 * 1024));
 
@@ -13,101 +14,145 @@ public static class PackagesRegistryExtensions
     {
         var routePrefix = prefix.Trim('/');
 
-        // 1. Service Index
         endpoints.MapGet($"{routePrefix}/index.json", (HttpContext context) =>
         {
             var baseUrl = $"{context.Request.Scheme}://{context.Request.Host}/{routePrefix}";
-            var index = new ServiceIndexDto("3.0.0", [
-                new($"{baseUrl}/query", "SearchQueryService", "Search"),
-                new($"{baseUrl}/metadata", "RegistrationsBaseUrl", "Metadata"),
-                new($"{baseUrl}/content", "PackageBaseAddress/3.0.0", "Download")
+            var response = new ServiceIndexDto("3.0.0", [
+                new ServiceResourceDto($"{baseUrl}/query", "SearchQueryService/3.4.0", "Search", NugetClientVersion),
+                new ServiceResourceDto($"{baseUrl}/autocomplete", "SearchAutocompleteService/3.0.0", "Autocomplete", NugetClientVersion),
+                new ServiceResourceDto($"{baseUrl}/metadata", "RegistrationsBaseUrl/3.6.0", "Metadata", NugetClientVersion),
+                new ServiceResourceDto($"{baseUrl}/content", "PackageBaseAddress/3.0.0", "Download", NugetClientVersion)
             ]);
-            return Results.Json(index, RegistryJsonContext.Default.ServiceIndexDto);
+
+            return Results.Json(response, RegistryJsonContext.Default.ServiceIndexDto);
         });
 
-        // 2. Package Content (Download .nupkg)
-        // Используем двойные скобки для экранирования параметров маршрута внутри интерполированной строки
         endpoints.MapGet($"{routePrefix}/content/{{id}}/{{version}}/{{file}}.nupkg", 
-            async (string id, string version, IPackageRepository repo, IMemoryCache cache, CancellationToken ct) =>
+            async (string id, string version, IPackageRepository repo, IMemoryCache cache, ILogger<IPackageRepository> logger, CancellationToken ct) =>
         {
+            if (logger.IsEnabled(LogLevel.Debug))
+                logger.LogDebug("Nupkg download requested: {Id} {Version}", id, version);
+
             var cacheKey = $"nupkg_{id}_{version}".ToLowerInvariant();
             if (cache.TryGetValue(cacheKey, out byte[]? cachedBytes))
                 return Results.File(cachedBytes!, "application/octet-stream", $"{id}.{version}.nupkg");
 
-            // Используем новый DictionaryMap.From с кортежем
             var manifests = await repo.GetManifestsAsync("any", DictionaryMap.From((id, version)), ct);
             var manifest = manifests.Get(id).AsMap();
-            if (manifest.IsEmpty) 
+            
+            if (manifest.IsEmpty)
                 return Results.NotFound();
 
             using var ms = new MemoryStream();
             await PackageExporter.ExportAsync(manifest, repo, ms, ct);
+            
             var bytes = ms.ToArray();
-
             cache.Set(cacheKey, bytes, new MemoryCacheEntryOptions { SlidingExpiration = TimeSpan.FromHours(1), Size = bytes.Length });
+
             return Results.File(bytes, "application/octet-stream", $"{id}.{version}.nupkg");
         });
 
-        // 3. Registrations (Metadata)
-        endpoints.MapGet($"{routePrefix}/metadata/{{id}}/index.json", async (string id, IPackageRepository repo, HttpContext context, CancellationToken ct) =>
+        endpoints.MapGet($"{routePrefix}/metadata/{{id}}/index.json", 
+            async (string id, IPackageRepository repo, ILogger<IPackageRepository> logger, HttpContext context, CancellationToken ct) =>
         {
+            if (logger.IsEnabled(LogLevel.Debug))
+                logger.LogDebug("Metadata requested for: {Id}", id);
+
             var baseUrl = $"{context.Request.Scheme}://{context.Request.Host}/{routePrefix}";
-            
             var versionsMap = await repo.GetVersionsAsync("any", DictionaryMap.From((id, true)), ct);
             var versions = versionsMap.Get(id).AsMap();
-            if (versions.IsEmpty) 
+            
+            if (versions.IsEmpty)
                 return Results.NotFound();
 
-            var leafs = versions.Keys().Select(v => new RegistrationLeafDto(
-                $"{baseUrl}/metadata/{id}/{v}.json",
-                $"{baseUrl}/content/{id}/{v}/{id}.{v}.nupkg",
-                new CatalogEntryDto($"{baseUrl}/metadata/{id}/{v}.json", id, v, "Prius", "Package", [])
-            )).ToList();
+            var leafs = new List<RegistrationLeafDto>();
+            foreach (var v in versions.Keys())
+            {
+                var manifests = await repo.GetManifestsAsync("any", DictionaryMap.From((id, v)), ct);
+                var manifest = manifests.Get(id).AsMap();
+                
+                var dependencyGroups = manifest.Get("Dependencies").AsMap().Keys().Select(tfm => 
+                {
+                    var tfmDeps = manifest.DeepGet("Dependencies/" + tfm).AsMap();
+                    return new DependencyGroupDto(tfm, tfmDeps.Keys().Select(depId => 
+                        new DependencyDto(depId, tfmDeps.Get(depId).AsMap().Get("version").AsValue<string>())
+                    ).ToList());
+                }).ToList();
 
-            var root = new RegistrationRootDto(1, [
+                leafs.Add(new RegistrationLeafDto(
+                    $"{baseUrl}/metadata/{id}/{v}.json",
+                    $"{baseUrl}/content/{id}/{v}/{id}.{v}.nupkg",
+                    new CatalogEntryDto(
+                        $"{baseUrl}/metadata/{id}/{v}.json", 
+                        id, v, 
+                        manifest.DeepGet("Info/authors").AsValue<string>(), 
+                        manifest.DeepGet("Info/description").AsValue<string>(), 
+                        dependencyGroups)
+                ));
+            }
+
+            var root = new RegistrationRootDto(leafs.Count, [
                 new RegistrationPageDto($"{baseUrl}/metadata/{id}/index.json#page1", leafs.Count, leafs, versions.Keys().First(), versions.Keys().Last())
             ]);
 
             return Results.Json(root, RegistryJsonContext.Default.RegistrationRootDto);
         });
-        
-        endpoints.MapGet($"{routePrefix}/query", async (
-            [FromQuery(Name = "q")] string? query, 
-            [FromQuery] int skip, 
-            [FromQuery] int take, 
-            IPackageRepository repo, 
-            ILoggerFactory loggerFactory,
-            CancellationToken ct) =>
+
+        endpoints.MapGet($"{routePrefix}/query", async (string? q, int? skip, int? take, IPackageRepository repo, HttpContext context, CancellationToken ct) =>
         {
-            var logger = loggerFactory.CreateLogger("Prius.Registry.Search");
-            if(logger.IsEnabled(LogLevel.Debug))
-                logger.LogDebug("Search request received: q='{Query}', skip={Skip}, take={Take}", query, skip, take);
-
-            var allPackages = await repo.GetPackagesAsync(ct);
-    
-            // Фильтрация по подстроке (case-insensitive)
-            var filtered = allPackages.Keys()
-                .Where(p => string.IsNullOrEmpty(query) || p.Contains(query, StringComparison.OrdinalIgnoreCase))
+            var baseUrl = $"{context.Request.Scheme}://{context.Request.Host}/{routePrefix}";
+            var allPackagesMap = await repo.GetPackagesAsync(ct);
+            
+            var filtered = allPackagesMap.Keys(true)
+                .Where(p => string.IsNullOrEmpty(q) || p.Contains(q, StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
-            var results = filtered
-                .Skip(skip)
-                .Take(take)
-                .Select(id => new
-                {
-                    id,
-                    version = "1.0.0", // Базовая версия для превью
-                    description = $"Package {id} hosted on Prius Directory Registry",
-                    authors = "Prius"
-                    // Здесь можно вытянуть метаданные из GetManifestsAsync, если нужно больше деталей
-                })
-                .ToList();
+            IEnumerable<string> paged = filtered;
+            if (skip != null)
+                paged = paged.Skip(skip.Value);
+            paged = paged.Take(take ?? 20);
 
-            return Results.Ok(new
+            var page = paged.ToList();
+            var data = new List<object>();
+
+            foreach (var id in page)
             {
-                totalHits = filtered.Count,
-                data = results
-            });
+                var versionsMap = await repo.GetVersionsAsync("any", DictionaryMap.From((id, true)), ct);
+                var versions = versionsMap.Get(id).AsMap();
+                var latestVersion = versions.Keys().LastOrDefault() ?? "0.0.0";
+                
+                var manifests = await repo.GetManifestsAsync("any", DictionaryMap.From((id, latestVersion)), ct);
+                var manifest = manifests.Get(id).AsMap();
+
+                data.Add(new
+                {
+                    id = $"{baseUrl}/metadata/{id}/index.json",
+                    type = "Package",
+                    version = latestVersion,
+                    description = manifest.DeepGet("Info/description").AsValue<string>(),
+                    authors = manifest.DeepGet("Info/authors").AsValue<string>(),
+                    verified = true,
+                    versions = versions.Keys().Select(v => new { 
+                        version = v, 
+                        id = $"{baseUrl}/metadata/{id}/{v}.json",
+                        downloads = 0 
+                    }).ToList()
+                });
+            }
+
+            return Results.Ok(new { totalHits = filtered.Count, data });
+        });
+        
+        endpoints.MapGet($"{routePrefix}/autocomplete", (string? q, int skip, int take) =>
+        {
+            try
+            {
+                return Task.FromResult(Results.Redirect($"{routePrefix}/query?q={q}&skip={skip}&take={take}"));
+            }
+            catch (Exception exception)
+            {
+                return Task.FromException<IResult>(exception);
+            }
         });
 
         return endpoints;

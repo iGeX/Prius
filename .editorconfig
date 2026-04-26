@@ -314,7 +314,8 @@ csharp_space_between_square_brackets=false
 
 # Wrap options:
 csharp_preserve_single_line_statements=false
-csharp_preserve_single_line_blocks=true
+csharp_preserve_single_line_blocks=false
+resharper_csharp_place_embedded_statement_on_same_line=false
 
 # Code-style naming rules:
 dotnet_naming_style.interface_upper_camel_case_style.capitalization=pascal_case

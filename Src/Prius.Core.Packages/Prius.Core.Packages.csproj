@@ -1,8 +1,5 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
     <PropertyGroup>
-        <OutputType>Library</OutputType>
-        <Description>Prius.Core.Packages</Description>
-        <RootNamespace>Prius.Core.Packages</RootNamespace>
         <IsPackable>true</IsPackable>
     </PropertyGroup>
   
@@ -11,6 +8,7 @@
     </ItemGroup>
   
     <ItemGroup>
+      <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.7" />
       <PackageReference Include="NuGet.Versioning" Version="7.3.1" />
-    </ItemGroup>
+  </ItemGroup>
 </Project>

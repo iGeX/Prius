@@ -14,14 +14,8 @@ public static class MapExtensions
         .ToArray();
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static string ToIndexString(this int i)
-    {
-        if ((uint)i < (uint)IndexCache.Length)
-            return IndexCache[i];
+    public static string ToIndexString(this int i) => (uint)i < (uint)IndexCache.Length ? IndexCache[i] : i.ToString();
 
-        return i.ToString();
-    }
-    
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static IEnumerable<string> GetReverseOrder(this IMap orderMap)
     {
