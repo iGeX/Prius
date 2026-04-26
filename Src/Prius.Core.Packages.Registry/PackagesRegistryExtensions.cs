@@ -1,4 +1,5 @@
 ﻿using Microsoft.Extensions.Caching.Memory;
+using NuGet.Versioning;
 using Prius.Core.Maps;
 
 namespace Prius.Core.Packages.Registry;
@@ -112,35 +113,38 @@ public static class PackagesRegistryExtensions
                 paged = paged.Skip(skip.Value);
             paged = paged.Take(take ?? 20);
 
-            var page = paged.ToList();
-            var data = new List<object>();
+            var searchResults = new List<SearchResultDto>();
 
-            foreach (var id in page)
+            foreach (var id in paged)
             {
                 var versionsMap = await repo.GetVersionsAsync("any", DictionaryMap.From((id, true)), ct);
-                var versions = versionsMap.Get(id).AsMap();
-                var latestVersion = versions.Keys().LastOrDefault() ?? "0.0.0";
+                var sortedVersions = versionsMap.Get(id).AsMap().Keys()
+                    .Select(NuGetVersion.Parse)
+                    .OrderBy(v => v)
+                    .ToList();
+
+                var latestVersion = sortedVersions.LastOrDefault()?.ToNormalizedString() ?? "0.0.0";
                 
                 var manifests = await repo.GetManifestsAsync("any", DictionaryMap.From((id, latestVersion)), ct);
                 var manifest = manifests.Get(id).AsMap();
 
-                data.Add(new
-                {
-                    id = $"{baseUrl}/metadata/{id}/index.json",
-                    type = "Package",
-                    version = latestVersion,
-                    description = manifest.DeepGet("Info/description").AsValue<string>(),
-                    authors = manifest.DeepGet("Info/authors").AsValue<string>(),
-                    verified = true,
-                    versions = versions.Keys().Select(v => new { 
-                        version = v, 
-                        id = $"{baseUrl}/metadata/{id}/{v}.json",
-                        downloads = 0 
-                    }).ToList()
-                });
+                searchResults.Add(new SearchResultDto(
+                    RegistrationId: $"{baseUrl}/metadata/{id.ToLowerInvariant()}/index.json",
+                    Type: "Package",
+                    Id: id,
+                    Version: latestVersion,
+                    Description: manifest.DeepGet("Info/description").AsValue<string>(),
+                    Authors: manifest.DeepGet("Info/authors").AsValue<string>(),
+                    ProjectUrl: manifest.DeepGet("Info/projectUrl").AsValue<string>(),
+                    RegistrationUrl: $"{baseUrl}/metadata/{id.ToLowerInvariant()}/index.json",
+                    Versions: sortedVersions.Select(v => new SearchResultVersionDto(
+                        $"{baseUrl}/metadata/{id.ToLowerInvariant()}/{v.ToNormalizedString()}.json",
+                        v.ToNormalizedString()
+                    )).ToList()
+                ));
             }
 
-            return Results.Ok(new { totalHits = filtered.Count, data });
+            return Results.Json(new SearchResponseDto(filtered.Count, searchResults), RegistryJsonContext.Default.SearchResponseDto);
         });
         
         endpoints.MapGet($"{routePrefix}/autocomplete", (string? q, int skip, int take) =>

@@ -33,6 +33,9 @@ public static class MapExtensions
     }
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static T OtherTo<T>() => typeof(T) == typeof(string) ? (T)(object)string.Empty : default!;
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static T LongTo<T>(long l) => typeof(T) switch
     {
         var t when t == typeof(long) => (T)(object)l,
@@ -73,13 +76,13 @@ public static class MapExtensions
     };
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static T StringTo<T>(string s)
+    private static T StringTo<T>(string? s)
     {
+        if (string.IsNullOrEmpty(s))
+            return (T)(object)string.Empty;
         if (typeof(T) == typeof(string)) 
             return (T)(object)s;
-        if (string.IsNullOrEmpty(s)) 
-            return default!;
-
+        
         var span = s.AsSpan().Trim();
 
         if (typeof(T) == typeof(long)) 
@@ -138,9 +141,9 @@ public static class MapExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static T AsValue<T>(this MapValue val) =>
         val.Match(
-            onEmpty: _ => default!,
-            onMap: _ => default!,
-            onString: StringTo<T>,
+            onEmpty: _ => OtherTo<T>(),
+            onMap: _ => OtherTo<T>(),
+            onString: StringTo<T>, 
             onLong: LongTo<T>,
             onBool: BoolTo<T>,
             onDecimal: DecimalTo<T>,

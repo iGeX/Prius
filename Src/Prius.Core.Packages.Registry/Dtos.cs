@@ -44,6 +44,26 @@ public record DependencyDto(
     [property: JsonPropertyName("id")] string Id,
     [property: JsonPropertyName("range")] string Range);
 
+public record SearchResponseDto(
+    [property: JsonPropertyName("totalHits")] int TotalHits,
+    [property: JsonPropertyName("data")] List<SearchResultDto> Data);
+
+public record SearchResultDto(
+    [property: JsonPropertyName("@id")] string RegistrationId,
+    [property: JsonPropertyName("@type")] string Type,
+    [property: JsonPropertyName("id")] string Id,
+    [property: JsonPropertyName("version")] string Version,
+    [property: JsonPropertyName("description")] string Description,
+    [property: JsonPropertyName("authors")] string Authors,
+    [property: JsonPropertyName("projectUrl")] string ProjectUrl,
+    [property: JsonPropertyName("registration")] string RegistrationUrl,
+    [property: JsonPropertyName("versions")] List<SearchResultVersionDto> Versions);
+
+public record SearchResultVersionDto(
+    [property: JsonPropertyName("@id")] string RegistrationLeafId,
+    [property: JsonPropertyName("version")] string Version,
+    [property: JsonPropertyName("downloads")] int Downloads = 0);
+    
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
@@ -51,4 +71,5 @@ public record DependencyDto(
 [JsonSerializable(typeof(ServiceIndexDto))]
 [JsonSerializable(typeof(RegistrationRootDto))]
 [JsonSerializable(typeof(List<string>))]
+[JsonSerializable(typeof(SearchResponseDto))]
 internal partial class RegistryJsonContext : JsonSerializerContext;

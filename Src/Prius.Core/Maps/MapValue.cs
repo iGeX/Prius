@@ -120,9 +120,9 @@ public readonly struct MapValue : IEquatable<MapValue>
     {
         switch (_type)
         {
-            case MapValueType.Empty: onEmpty((Empty)(_content ?? Empty.Instance)); break;
-            case MapValueType.Map: onMap((IMap)_content!); break;
-            case MapValueType.String: onString((string)_content!); break;
+            case MapValueType.Empty: onEmpty(Empty.Instance); break;
+            case MapValueType.Map: onMap((IMap?)_content ?? EmptyMap.Instance); break;
+            case MapValueType.String: onString((string?)_content ?? string.Empty); break;
             case MapValueType.Long: onLong((long)_content!); break;
             case MapValueType.Boolean: onBool((bool)_content!); break;
             case MapValueType.Decimal: onDecimal((decimal)_content!); break;
@@ -141,8 +141,8 @@ public readonly struct MapValue : IEquatable<MapValue>
         Func<DateTimeOffset, T> onDateTimeOffset) => _type switch
     {
         MapValueType.Empty => onEmpty((Empty)(_content ?? Empty.Instance)),
-        MapValueType.Map => onMap((IMap)_content!),
-        MapValueType.String => onString((string)_content!),
+        MapValueType.Map => onMap((IMap?)_content ?? EmptyMap.Instance),
+        MapValueType.String => onString((string?)_content ?? string.Empty),
         MapValueType.Long => onLong((long)_content!),
         MapValueType.Boolean => onBool((bool)_content!),
         MapValueType.Decimal => onDecimal((decimal)_content!),

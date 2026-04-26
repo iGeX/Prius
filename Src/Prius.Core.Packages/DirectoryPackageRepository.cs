@@ -58,21 +58,25 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
     public async ValueTask<IMap> GetVersionsAsync(string tfm, IMap ids, CancellationToken ct = default)
     {
         await EnsureInitializedAsync(ct);
-        
         var result = DictionaryMap.New;
+        var isAny = tfm.Equals("any", StringComparison.OrdinalIgnoreCase);
         var compatibleTfms = FrameworkConstants.GetCompatible(tfm);
 
         foreach (var pkgName in ids.Keys())
         {
             var versions = DictionaryMap.New;
-            foreach (var compatibleTfm in compatibleTfms)
-            {
-                if (!_manifests.TryGetValue(compatibleTfm, out var tfmStore) || !tfmStore.TryGetValue(pkgName, out var pkgStore))
-                    continue;
-                foreach (var version in pkgStore.Keys)
-                    versions.Put(version, true);
-            }
+        
+            // Если просят any — берем все TFM из кэша
+            var tfmsToSearch = isAny ? _manifests.Keys : compatibleTfms;
 
+            foreach (var currentTfm in tfmsToSearch)
+            {
+                if (_manifests.TryGetValue(currentTfm, out var tfmStore) && tfmStore.TryGetValue(pkgName, out var pkgStore))
+                {
+                    foreach (var version in pkgStore.Keys)
+                        versions.Put(version, true);
+                }
+            }
             result.Put(pkgName, versions);
         }
         return result;
@@ -81,21 +85,25 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
     public async ValueTask<IMap> GetManifestsAsync(string tfm, IMap packages, CancellationToken ct = default)
     {
         await EnsureInitializedAsync(ct);
-        
         var result = DictionaryMap.New;
+        var isAny = tfm.Equals("any", StringComparison.OrdinalIgnoreCase);
         var compatibleTfms = FrameworkConstants.GetCompatible(tfm);
 
         foreach (var pkgName in packages.Keys())
         {
             var version = packages.Get(pkgName).AsValue<string>();
-            foreach (var compatibleTfm in compatibleTfms)
+            var tfmsToSearch = isAny ? _manifests.Keys : compatibleTfms;
+
+            foreach (var currentTfm in tfmsToSearch)
             {
-                if (!_manifests.TryGetValue(compatibleTfm, out var tfmStore) || !tfmStore.TryGetValue(pkgName, out var pkgStore) ||
-                        !pkgStore.TryGetValue(version, out var manifest)) 
-                    continue;
-                
-                result.Put(pkgName, manifest);
-                break;
+                if (_manifests.TryGetValue(currentTfm, out var tfmStore) && 
+                    tfmStore.TryGetValue(pkgName, out var pkgStore) && 
+                    pkgStore.TryGetValue(version, out var manifest))
+                {
+                    result.Put(pkgName, manifest);
+                    // Если мы в режиме any, нам достаточно найти любой первый попавшийся манифест этой версии
+                    break; 
+                }
             }
         }
         return result;
@@ -130,7 +138,13 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
             var ver = map.DeepGet("Info/version").AsValue<string>();
             var tracked = new List<(string, string, string)>();
 
-            foreach (var tfm in map.Get("Dependencies").AsMap().Keys())
+            var depMap = map.Get("Dependencies").AsMap();
+            var tfms = depMap.Keys().ToList();
+
+            if (tfms.Count == 0)
+                tfms.Add("any");
+
+            foreach (var tfm in tfms)
             {
                 var tfmStore = _manifests.GetOrAdd(tfm, _ => new(StringComparer.OrdinalIgnoreCase));
                 var pkgStore = tfmStore.GetOrAdd(pkg, _ => new(StringComparer.OrdinalIgnoreCase));
