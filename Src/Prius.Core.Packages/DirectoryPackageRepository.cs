@@ -25,7 +25,11 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
             NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size 
         };
 
-        _watcher.Created += async (_, e) => await IndexFileAsync(e.FullPath);
+        _watcher.Created += async (_, e) =>
+        {
+            await Task.Delay(100); 
+            await IndexFileAsync(e.FullPath);
+        };
         _watcher.Deleted += (_, e) => RemoveFile(e.FullPath);
         _watcher.Changed += async (_, e) => 
         { 
@@ -130,7 +134,6 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
     {
         try 
         {
-            await Task.Delay(100); 
             await using var stream = File.OpenRead(path);
             var map = PackageImporter.Import(stream);
             

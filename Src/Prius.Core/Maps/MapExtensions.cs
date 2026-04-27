@@ -151,6 +151,24 @@ public static class MapExtensions
         );
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static string AsString(this MapValue val) => val.AsValue<string>();
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static long AsLong(this MapValue val) => val.AsValue<long>();
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static int AsInt(this MapValue val) => (int) val.AsValue<long>();
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool AsBool(this MapValue val) => val.AsValue<bool>();
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static decimal AsDecimal(this MapValue val) => val.AsValue<decimal>();
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static DateTimeOffset AsDateTimeOffset(this MapValue val) => val.AsValue<DateTimeOffset>();
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static IMap AsMap(this MapValue mapValue) => mapValue.Match(
         _ => EmptyMap.Instance, 
         m => m,
@@ -226,17 +244,32 @@ public static class MapExtensions
     }
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static DictionaryMap With(this DictionaryMap map, string key, MapValue value)
+    public static TMap With<TMap>(this TMap map, string key, MapValue value) where TMap : IMap
     {
         map.Put(key, value);
         return map;
     }
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static DictionaryMap With(this DictionaryMap map, params (string Key, MapValue Value)[] items)
+    public static TMap With<TMap>(this TMap map, params (string Key, MapValue Value)[] items) where TMap : IMap
     {
         foreach (var (key, value) in items)
             map.Put(key, value);
+        return map;
+    }
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static TMap With<TMap>(this TMap map, string key, IMap subMap) where TMap : IMap
+    {
+        map.Put(key, subMap);
+        return map;
+    }
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static TMap With<TMap>(this TMap map, params (string Key, IMap SubMap)[] items) where TMap : IMap
+    {
+        foreach (var (key, subMap) in items)
+            map.Put(key, subMap);
         return map;
     }
     

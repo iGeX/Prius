@@ -1,103 +1,103 @@
-﻿using NuGet.Versioning;
-using Prius.Core.Maps;
+﻿using Prius.Core.Maps;
 
 namespace Prius.Core.Packages;
 
+/// <summary>
+/// Resolves a dependency graph and builds a flat loading order.
+/// </summary>
 public sealed class PackageResolver(IPackageRepository repository)
 {
     /// <summary>
-    /// Resolves a full dependency graph starting from the root package.
-    /// Returns a map containing resolved versions and a deterministic loading order.
+    /// Resolves dependencies for a set of target packages and returns a flat order map.
     /// </summary>
-    /// <param name="rootPackage">The identifier of the starting package.</param>
-    /// <param name="rootVersion">The version or version range of the starting package.</param>
-    /// <param name="tfm">The Target Framework Moniker (e.g., "net8.0") to resolve compatible paths.</param>
+    /// <param name="tfm">The target framework (e.g., "net10.0").</param>
+    /// <param name="targets">
+    /// A map of package IDs to versions. 
+    /// Layout: { "Package.Id": "1.0.0" }
+    /// </param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>
-    /// A read-only map with the following structure:
-    /// - /Versions: { "PackageName": "Version" }
-    /// - /Order: { "0": "PackageName_Root", "1": "PackageName_Level1", ... }
+    /// A flat order map for sequential loading.
+    /// Layout: 
+    /// { 
+    ///   "0": { "Id": "Dep.A", "Version": "1.0.0", "Dependencies": { ... } },
+    ///   "1": { "Id": "Root.B", "Version": "1.1.0", "Dependencies": { ... } } 
+    /// }
     /// </returns>
-    public async ValueTask<IMap> ResolveAsync(string rootPackage, string rootVersion, string tfm, CancellationToken ct = default)
+    public async ValueTask<IMap> Resolve(string tfm, IMap targets, CancellationToken ct = default)
     {
-        var resolvedVersions = DictionaryMap.New;
-        var orderMap = DictionaryMap.New;
-        var pendingRequests = DictionaryMap.New;
-        
-        var orderIndex = 0;
-        pendingRequests.Put(rootPackage, rootVersion);
+        IMap resolved = DictionaryMap.New;
+        var queue = targets;
 
-        while (!pendingRequests.IsEmpty)
+        while (!queue.IsEmpty)
         {
-            var versionRequest = DictionaryMap.New;
-            foreach (var package in pendingRequests.Keys())
-                versionRequest.Put(package, true);
+            ct.ThrowIfCancellationRequested();
 
-            var versionsMap = await repository.GetVersions(tfm, versionRequest, ct);
-            
-            var manifestRequest = DictionaryMap.New;
-            
-            foreach (var package in pendingRequests.Keys())
+            var manifests = await repository.GetManifests(tfm, queue, ct);
+            var nextQueue = DictionaryMap.New;
+
+            foreach (var id in queue.Keys())
             {
-                var range = pendingRequests.Get(package).AsValue<string>();
-                var available = versionsMap.Get(package).AsMap();
-                
-                var best = SelectBestVersion(available, range);
-                if (string.IsNullOrEmpty(best))
-                    throw new InvalidOperationException($"Could not resolve version for {package} within range {range}");
+                var manifestValue = manifests.Get(id);
+                if (manifestValue.IsEmpty) 
+                    continue;
 
-                manifestRequest.Put(package, best);
-                
-                if (resolvedVersions.Get(package).IsEmpty)
-                {
-                    resolvedVersions.Put(package, best);
-                    orderMap.Put(orderIndex++.ToString(), package);
-                }
+                var manifest = manifestValue.AsMap();
+                var version = queue.Get(id).AsString();
+
+                var existing = resolved.Get(id).AsMap();
+                if (!existing.IsEmpty && string.CompareOrdinal(existing.Get("Version").AsString(), version) >= 0)
+                    continue;
+
+                var packageDeps = manifest.Get("Dependencies").AsMap();
+                resolved.Put(id, DictionaryMap.New
+                    .With("Version", version)
+                    .With("Dependencies", packageDeps));
+
+                var tfmDeps = packageDeps.Get(tfm).AsMap();
+                if (tfmDeps.IsEmpty && string.CompareOrdinal(tfm, FrameworkConstants.Any) != 0)
+                    tfmDeps = packageDeps.Get(FrameworkConstants.Any).AsMap();
+
+                foreach (var depId in tfmDeps.Keys())
+                    nextQueue.Put(depId, tfmDeps.Get(depId).AsString());
             }
 
-            var manifests = await repository.GetManifests(tfm, manifestRequest, ct);
-            pendingRequests = DictionaryMap.New; 
-            
-            foreach (var package in manifests.Keys())
-            {
-                var manifest = manifests.Get(package).AsMap();
-                var dependencies = manifest.DeepGet("Dependencies/" + tfm).AsMap();
-                
-                foreach (var depPackage in dependencies.Keys())
-                {
-                    var depInfo = dependencies.Get(depPackage).AsMap();
-                    
-                    if (depInfo.Get("PrivateAssets").AsValue<string>().Equals("All", StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    if (resolvedVersions.Get(depPackage).IsEmpty)
-                        pendingRequests.Put(depPackage, depInfo.Get("Version").AsValue<string>());
-                }
-            }
+            queue = nextQueue;
         }
 
-        var result = DictionaryMap.New;
-        result.Put("Versions", resolvedVersions);
-        result.Put("Order", orderMap);
-
-        return result.AsReadOnly();
+        return BuildOrderMap(tfm, resolved);
     }
 
-    private static string SelectBestVersion(IMap availableVersions, string range)
+    private IMap BuildOrderMap(string tfm, IMap resolved)
     {
-        if (availableVersions.IsEmpty || !VersionRange.TryParse(range, out var versionRange)) 
-            return string.Empty;
+        IMap order = DictionaryMap.New;
+        IMap visited = DictionaryMap.New;
+        var index = 0;
 
-        NuGetVersion? bestVersion = null;
-        foreach (var versionStr in availableVersions.Keys())
-        {
-            if (!NuGetVersion.TryParse(versionStr, out var current) || !versionRange.Satisfies(current)) 
-                continue;
-            
-            if (bestVersion == null || current > bestVersion)
-                bestVersion = current;
-        }
+        foreach (var id in resolved.Keys())
+            (order, visited, index) = Sort(id, tfm, resolved, order, visited, index);
 
-        return bestVersion?.ToNormalizedString() ?? string.Empty;
+        return order;
+    }
+
+    private (IMap order, IMap visited, int index) Sort(string id, string tfm, IMap resolved, IMap order, IMap visited, int index)
+    {
+        if (visited.Get(id).AsBool()) 
+            return (order, visited, index);
+
+        var data = resolved.Get(id).AsMap();
+        var packageDeps = data.Get("Dependencies").AsMap();
+        
+        var deps = packageDeps.Get(tfm).AsMap();
+        if (deps.IsEmpty && string.CompareOrdinal(tfm, FrameworkConstants.Any) != 0)
+            deps = packageDeps.Get(FrameworkConstants.Any).AsMap();
+
+        visited.Put(id, true);
+
+        foreach (var depId in deps.Keys())
+            (order, visited, index) = Sort(depId, tfm, resolved, order, visited, index);
+
+        order.Put(index.ToIndexString(), data.With("Id", id));
+        return (order, visited, index + 1);
     }
 }

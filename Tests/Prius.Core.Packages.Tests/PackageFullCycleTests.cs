@@ -24,6 +24,9 @@ public sealed class PackageFullCycleTests
                                                <id>Prius.Test</id>
                                                <version>1.0.0</version>
                                                <authors>GeX</authors>
+                                               <dependencies>
+                                                  <group targetFramework="net10.0" />
+                                                </dependencies>
                                             </metadata>
                                         </package>
                                         """);
@@ -44,7 +47,7 @@ public sealed class PackageFullCycleTests
         repo.AddPackage(importedMap, blobs);
         
         var resolver = new PackageResolver(repo);
-        var resolvedGraph = await resolver.ResolveAsync("Prius.Test", "1.0.0", "net10.0", TestContext.Current.CancellationToken);
+        var resolvedGraph = await resolver.Resolve("net10.0", DictionaryMap.New.With("Prius.Test", "1.0.0"), TestContext.Current.CancellationToken);
         
         Assert.Equal("1.0.0", resolvedGraph.DeepGet("Versions/Prius.Test").AsValue<string>());
         
