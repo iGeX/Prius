@@ -69,17 +69,15 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
         foreach (var pkgName in ids.Keys())
         {
             var versions = DictionaryMap.New;
-        
-            // Если просят any — берем все TFM из кэша
             var tfmsToSearch = isAny ? _manifests.Keys : compatibleTfms;
 
             foreach (var currentTfm in tfmsToSearch)
             {
-                if (_manifests.TryGetValue(currentTfm, out var tfmStore) && tfmStore.TryGetValue(pkgName, out var pkgStore))
-                {
-                    foreach (var version in pkgStore.Keys)
-                        versions.Put(version, true);
-                }
+                if (!_manifests.TryGetValue(currentTfm, out var tfmStore) || !tfmStore.TryGetValue(pkgName, out var pkgStore))
+                    continue;
+                
+                foreach (var version in pkgStore.Keys)
+                    versions.Put(version, true);
             }
             result.Put(pkgName, versions);
         }
@@ -100,14 +98,13 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
 
             foreach (var currentTfm in tfmsToSearch)
             {
-                if (_manifests.TryGetValue(currentTfm, out var tfmStore) && 
-                    tfmStore.TryGetValue(pkgName, out var pkgStore) && 
-                    pkgStore.TryGetValue(version, out var manifest))
-                {
-                    result.Put(pkgName, manifest);
-                    // Если мы в режиме any, нам достаточно найти любой первый попавшийся манифест этой версии
-                    break; 
-                }
+                if (!_manifests.TryGetValue(currentTfm, out var tfmStore) ||
+                    !tfmStore.TryGetValue(pkgName, out var pkgStore) ||
+                    !pkgStore.TryGetValue(version, out var manifest))
+                    continue;
+                
+                result.Put(pkgName, manifest);
+                break;
             }
         }
         return result;
@@ -129,6 +126,12 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
         ms.Position = 0;
         return ms;
     }
+
+    public event Func<ValueTask>? OnStasisRequested;
+    
+    public event Func<ValueTask>? OnBirthRequested;
+    
+    public event Func<ValueTask>? OnKillRequested;
 
     private async Task IndexFileAsync(string path)
     {

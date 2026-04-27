@@ -44,4 +44,10 @@ public interface IPackageRepository
     /// <param name="hash">The SHA256 hash of the content.</param>
     /// <param name="ct">Cancellation token.</param>
     ValueTask<Stream> OpenStream(string hash, CancellationToken ct = default);
+    
+    event Func<ValueTask> OnStasisRequested;
+
+    event Func<ValueTask> OnBirthRequested;
+    
+    event Func<ValueTask> OnKillRequested;
 }

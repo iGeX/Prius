@@ -34,7 +34,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Core", "Core", "{B7475C11-1
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "PackagesRegistry", "PackagesRegistry", "{9AE799E0-73D0-4ACD-8C37-7CEDBA54551C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Prius.Kernel", "Src\Prius.Kernel\Prius.Kernel.csproj", "{5CAB1F63-C19E-4A2D-A77D-D2A803BC2D31}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Prius.App", "Src\Prius.App\Prius.App.csproj", "{5CAB1F63-C19E-4A2D-A77D-D2A803BC2D31}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

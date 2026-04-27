@@ -9,7 +9,7 @@ public static class PackageExporter
     /// <summary>
     /// Exports a package from the repository to a .nupkg (ZIP) stream.
     /// </summary>
-    public static async Task ExportAsync(
+    public static async Task Export(
         IMap manifest, 
         IPackageRepository repository, 
         Stream outputStream, 

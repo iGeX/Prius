@@ -6,67 +6,52 @@ public sealed class MockPackageRepository : IPackageRepository
 {
     private readonly Dictionary<string, IMap> _manifests = new();
     private readonly Dictionary<string, byte[]> _blobs = new();
-    private readonly Dictionary<string, HashSet<string>> _versions = new();
 
-    public void AddPackage(IMap manifest, Dictionary<string, byte[]> packageBlobs)
+    public void AddPackage(IMap manifest, Dictionary<string, byte[]>? blobs = null)
     {
-        var id = manifest.DeepGet("Info/id").AsValue<string>();
-        var version = manifest.DeepGet("Info/version").AsValue<string>();
-        var tfm = manifest.Get("Dependencies").AsMap().Keys().FirstOrDefault() ?? "any";
+        var id = manifest.DeepGet("Info/id").AsString();
+        var ver = manifest.DeepGet("Info/version").AsString();
+        _manifests[$"{id}_{ver}"] = manifest;
 
-        _manifests[$"pkg/{tfm}/{id}/{version}".ToLowerInvariant()] = manifest;
+        if (blobs == null)
+            return;
         
-        if (!_versions.ContainsKey(id)) _versions[id] = new HashSet<string>();
-        _versions[id].Add(version);
-
-        foreach (var blob in packageBlobs)
-            _blobs[blob.Key] = blob.Value;
+        foreach (var b in blobs) 
+            _blobs[b.Key] = b.Value;
     }
-    
-    public async ValueTask<IMap> GetPackages(CancellationToken ct = default)
-    {
-        var result = DictionaryMap.New;
-    
-        foreach (var package in _versions.Keys) 
-            result.Put(package, true);
 
-        return await ValueTask.FromResult(result.AsReadOnly());
-    }
-    
-    public ValueTask<IMap> GetVersions(string tfm, IMap ids, CancellationToken ct = default)
+    public ValueTask<IMap> GetPackages(CancellationToken ct) => throw new NotSupportedException();
+
+    public ValueTask<IMap> GetVersions(string tfm, IMap ids, CancellationToken ct)
     {
-        var result = DictionaryMap.New;
+        var res = DictionaryMap.New;
         foreach (var id in ids.Keys())
         {
-            if (!_versions.TryGetValue(id, out var versions)) 
-                continue;
-            
-            var vMap = DictionaryMap.New;
-            foreach (var v in versions) 
-                vMap.Put(v, true);
-            result.Put(id, vMap);
+            var vers = DictionaryMap.New;
+            foreach (var key in _manifests.Keys.Where(k => k.StartsWith(id + "_")))
+                vers.Put(key.Split('_')[1], true);
+            res.Put(id, vers);
         }
-        return new ValueTask<IMap>(result);
+        return new(res);
     }
 
-    public ValueTask<IMap> GetManifests(string tfm, IMap packages, CancellationToken ct = default)
+    public ValueTask<IMap> GetManifests(string tfm, IMap packages, CancellationToken ct)
     {
-        var result = DictionaryMap.New;
-        foreach (var pair in packages.Keys())
+        var res = DictionaryMap.New;
+        foreach (var p in packages.Keys())
         {
-            var version = packages.Get(pair).AsValue<string>();
-            var key = $"pkg/{tfm}/{pair}/{version}".ToLowerInvariant();
-            if (_manifests.TryGetValue(key, out var manifest))
-                result.Put(pair, manifest);
+            var key = $"{p}_{packages.Get(p).AsString()}";
+            if (_manifests.TryGetValue(key, out var m)) res.Put(p, m);
         }
-        return new ValueTask<IMap>(result);
+        return new(res);
     }
 
-    public ValueTask<Stream> OpenStream(string hash, CancellationToken ct = default)
-    {
-        if (_blobs.TryGetValue(hash, out var data))
-            return new ValueTask<Stream>(new MemoryStream(data));
-        
-        throw new FileNotFoundException($"Blob {hash} not found");
-    }
+    public ValueTask<Stream> OpenStream(string hash, CancellationToken ct) => 
+        new(new MemoryStream(_blobs[hash]));
+
+    public event Func<ValueTask>? OnStasisRequested;
+    
+    public event Func<ValueTask>? OnBirthRequested;
+    
+    public event Func<ValueTask>? OnKillRequested;
 }

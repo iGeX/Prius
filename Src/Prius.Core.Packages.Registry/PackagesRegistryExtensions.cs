@@ -50,7 +50,7 @@ public static class PackagesRegistryExtensions
                 return Results.NotFound();
 
             using var ms = new MemoryStream();
-            await PackageExporter.ExportAsync(manifest, repo, ms, ct);
+            await PackageExporter.Export(manifest, repo, ms, ct);
             
             var bytes = ms.ToArray();
             cache.Set(cacheKey, bytes, new MemoryCacheEntryOptions { SlidingExpiration = TimeSpan.FromHours(1), Size = bytes.Length });

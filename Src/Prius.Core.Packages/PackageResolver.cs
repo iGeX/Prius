@@ -2,102 +2,100 @@
 
 namespace Prius.Core.Packages;
 
-/// <summary>
-/// Resolves a dependency graph and builds a flat loading order.
-/// </summary>
 public sealed class PackageResolver(IPackageRepository repository)
 {
     /// <summary>
-    /// Resolves dependencies for a set of target packages and returns a flat order map.
+    /// Resolves the dependency graph and builds a self-contained deployment snapshot.
+    /// Uses TFM-chaining to find the most compatible dependencies and ensures a deterministic loading order.
     /// </summary>
-    /// <param name="tfm">The target framework (e.g., "net10.0").</param>
+    /// <param name="tfm">The target framework (e.g., "net10.0") used to filter dependencies and assets.</param>
     /// <param name="targets">
-    /// A map of package IDs to versions. 
-    /// Layout: { "Package.Id": "1.0.0" }
+    /// A map of root package IDs to their requested versions.
+    /// Layout: { "Prius.Web": "1.0.0", "Prius.Data": "2.1.0" }
     /// </param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>
-    /// A flat order map for sequential loading.
-    /// Layout: 
-    /// { 
-    ///   "0": { "Id": "Dep.A", "Version": "1.0.0", "Dependencies": { ... } },
-    ///   "1": { "Id": "Root.B", "Version": "1.1.0", "Dependencies": { ... } } 
+    /// A snapshot map containing everything needed for the bootstrap process:
+    /// {
+    ///   "Order": { "0": "Newtonsoft.Json", "1": "Prius.Web" },
+    ///   "Manifests": {
+    ///     "Newtonsoft.Json": { "Info": {...}, "Assets": {...}, "Dependencies": {...} },
+    ///     "Prius.Web": { ... }
+    ///   }
     /// }
     /// </returns>
     public async ValueTask<IMap> Resolve(string tfm, IMap targets, CancellationToken ct = default)
     {
-        IMap resolved = DictionaryMap.New;
+        var resolvedManifests = DictionaryMap.New;
         var queue = targets;
 
         while (!queue.IsEmpty)
         {
             ct.ThrowIfCancellationRequested();
-
-            var manifests = await repository.GetManifests(tfm, queue, ct);
+            var currentManifests = await repository.GetManifests(tfm, queue, ct);
             var nextQueue = DictionaryMap.New;
 
             foreach (var id in queue.Keys())
             {
-                var manifestValue = manifests.Get(id);
-                if (manifestValue.IsEmpty) 
-                    continue;
+                var manifestValue = currentManifests.Get(id);
+                if (manifestValue.IsEmpty) continue;
 
                 var manifest = manifestValue.AsMap();
                 var version = queue.Get(id).AsString();
+                
+                var existing = resolvedManifests.Get(id).AsMap();
+                if (!existing.IsEmpty)
+                {
+                    var existingVer = existing.DeepGet("Info/version").AsString();
+                    if (string.CompareOrdinal(existingVer, version) >= 0) continue;
+                }
 
-                var existing = resolved.Get(id).AsMap();
-                if (!existing.IsEmpty && string.CompareOrdinal(existing.Get("Version").AsString(), version) >= 0)
-                    continue;
-
-                var packageDeps = manifest.Get("Dependencies").AsMap();
-                resolved.Put(id, DictionaryMap.New
-                    .With("Version", version)
-                    .With("Dependencies", packageDeps));
-
-                var tfmDeps = packageDeps.Get(tfm).AsMap();
-                if (tfmDeps.IsEmpty && string.CompareOrdinal(tfm, FrameworkConstants.Any) != 0)
-                    tfmDeps = packageDeps.Get(FrameworkConstants.Any).AsMap();
-
-                foreach (var depId in tfmDeps.Keys())
-                    nextQueue.Put(depId, tfmDeps.Get(depId).AsString());
+                resolvedManifests.Put(id, manifest);
+                
+                var deps = GetCompatibleDeps(manifest, tfm);
+                foreach (var depId in deps.Keys())
+                    nextQueue.Put(depId, deps.Get(depId).AsMap().Get("version").AsString());
             }
-
             queue = nextQueue;
         }
-
-        return BuildOrderMap(tfm, resolved);
-    }
-
-    private IMap BuildOrderMap(string tfm, IMap resolved)
-    {
-        IMap order = DictionaryMap.New;
-        IMap visited = DictionaryMap.New;
-        var index = 0;
-
-        foreach (var id in resolved.Keys())
-            (order, visited, index) = Sort(id, tfm, resolved, order, visited, index);
-
-        return order;
-    }
-
-    private (IMap order, IMap visited, int index) Sort(string id, string tfm, IMap resolved, IMap order, IMap visited, int index)
-    {
-        if (visited.Get(id).AsBool()) 
-            return (order, visited, index);
-
-        var data = resolved.Get(id).AsMap();
-        var packageDeps = data.Get("Dependencies").AsMap();
         
-        var deps = packageDeps.Get(tfm).AsMap();
-        if (deps.IsEmpty && string.CompareOrdinal(tfm, FrameworkConstants.Any) != 0)
-            deps = packageDeps.Get(FrameworkConstants.Any).AsMap();
+        var order = DictionaryMap.New;
+        var visited = DictionaryMap.New;
+        
+        foreach (var id in resolvedManifests.Keys())
+            Sort(id, tfm, resolvedManifests, order, visited);
 
+        return DictionaryMap.New
+            .With("Order", order)
+            .With("Manifests", resolvedManifests);
+    }
+
+    private static void Sort(string id, string tfm, IMap manifests, IMap order, IMap visited)
+    {
+        if (visited.Get(id).AsBool()) return;
         visited.Put(id, true);
 
-        foreach (var depId in deps.Keys())
-            (order, visited, index) = Sort(depId, tfm, resolved, order, visited, index);
+        var manifest = manifests.Get(id).AsMap();
+        var deps = GetCompatibleDeps(manifest, tfm);
 
-        order.Put(index.ToIndexString(), data.With("Id", id));
-        return (order, visited, index + 1);
+        foreach (var depId in deps.Keys())
+        {
+            if (!manifests.Get(depId).IsEmpty)
+                Sort(depId, tfm, manifests, order, visited);
+        }
+
+        order.Put(order.Values.Count().ToIndexString(), id);
+    }
+
+    private static IMap GetCompatibleDeps(IMap manifest, string tfm)
+    {
+        var allDeps = manifest.Get("Dependencies").AsMap();
+        foreach (var compatibleTfm in FrameworkConstants.GetCompatible(tfm))
+        {
+            var branch = allDeps.Get(compatibleTfm).AsMap();
+            if (!branch.IsEmpty) 
+                return branch;
+        }
+        return EmptyMap.Instance;
     }
 }

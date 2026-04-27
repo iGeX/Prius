@@ -19,40 +19,36 @@ public static class NuspecMapper
         foreach (var element in metadata.Elements())
         {
             var name = element.Name.LocalName;
-
-            //Dependencies обрабатываем отдельно по своей структуре
             if (name == "dependencies")
                 continue;
-
-            // Если у элемента есть вложенные элементы или атрибуты — делаем из него мапу
+            
             if (element.HasElements || element.HasAttributes)
             {
                 info.Put(name, ParseComplexElement(element));
                 continue;
             }
-
-            // Иначе просто кладем значение
+            
             info.Put(name, element.Value);
         }
 
         rootMap.Put("Info", info);
 
         var dependenciesNode = metadata.Element(ns + "dependencies");
-        if (dependenciesNode != null)
+        if (dependenciesNode == null)
+            return rootMap;
+        
+        var depsMap = DictionaryMap.New;
+        var groups = dependenciesNode.Elements(ns + "group").ToList();
+
+        if (groups.Count > 0)
         {
-            var depsMap = DictionaryMap.New;
-            var groups = dependenciesNode.Elements(ns + "group").ToList();
-
-            if (groups.Count > 0)
-            {
-                foreach (var group in groups)
-                    depsMap.Put(group.Attribute("targetFramework")?.Value ?? "any", ParseDependencyGroup(group, ns));
-            }
-            else
-                depsMap.Put("any", ParseDependencyGroup(dependenciesNode, ns));
-
-            rootMap.Put("Dependencies", depsMap);
+            foreach (var group in groups)
+                depsMap.Put(group.Attribute("targetFramework")?.Value ?? "any", ParseDependencyGroup(group, ns));
         }
+        else
+            depsMap.Put("any", ParseDependencyGroup(dependenciesNode, ns));
+
+        rootMap.Put("Dependencies", depsMap);
 
         return rootMap;
     }
@@ -69,8 +65,7 @@ public static class NuspecMapper
             var mapValue = child.HasElements || child.HasAttributes ? new MapValue(ParseComplexElement(child)) : (MapValue) child.Value;
             map.Put(child.Name.LocalName, mapValue);
         }
-
-        // Если элементов нет, но был текст (например <tag attr="1">text</tag>)
+        
         if (!element.HasElements && !string.IsNullOrWhiteSpace(element.Value))
             map.Put("value", element.Value);
 
