@@ -12,7 +12,7 @@ public interface IPackageRepository
     /// Retrieves all unique package identifiers available in the repository.
     /// Output: Map { "newtonsoft.json": true, "prius.core": true }
     /// </summary>
-    ValueTask<IMap> GetPackagesAsync(CancellationToken ct = default);
+    ValueTask<IMap> GetPackages(CancellationToken ct = default);
     
     /// <summary>
     /// Retrieves a set of available versions for the requested package identifiers.
@@ -24,7 +24,7 @@ public interface IPackageRepository
     /// A map where each key is a package ID and each value is another map containing available versions as keys.
     /// Example: { "newtonsoft.json": { "13.0.1": true, "13.0.3": true } }.
     /// </returns>
-    ValueTask<IMap> GetVersionsAsync(string tfm, IMap ids, CancellationToken ct = default);
+    ValueTask<IMap> GetVersions(string tfm, IMap ids, CancellationToken ct = default);
 
     /// <summary>
     /// Retrieves full manifests for the specified package versions.
@@ -35,7 +35,7 @@ public interface IPackageRepository
     /// <returns>
     /// A map where each key is a package ID and each value is the package manifest stored as a map.
     /// </returns>
-    ValueTask<IMap> GetManifestsAsync(string tfm, IMap packages, CancellationToken ct = default);
+    ValueTask<IMap> GetManifests(string tfm, IMap packages, CancellationToken ct = default);
     
     /// <summary>
     /// Opens a stream to access the binary content identified by its hash.
@@ -43,5 +43,5 @@ public interface IPackageRepository
     /// </summary>
     /// <param name="hash">The SHA256 hash of the content.</param>
     /// <param name="ct">Cancellation token.</param>
-    ValueTask<Stream> OpenStreamAsync(string hash, CancellationToken ct = default);
+    ValueTask<Stream> OpenStream(string hash, CancellationToken ct = default);
 }

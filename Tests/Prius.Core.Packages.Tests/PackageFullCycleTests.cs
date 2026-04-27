@@ -49,7 +49,7 @@ public sealed class PackageFullCycleTests
         Assert.Equal("1.0.0", resolvedGraph.DeepGet("Versions/Prius.Test").AsValue<string>());
         
         using var outputStream = new MemoryStream();
-        var manifest = await repo.GetManifestsAsync("any", resolvedGraph.Get("Versions").AsMap(), TestContext.Current.CancellationToken);
+        var manifest = await repo.GetManifests("any", resolvedGraph.Get("Versions").AsMap(), TestContext.Current.CancellationToken);
         
         await PackageExporter.ExportAsync(manifest.Get("Prius.Test").AsMap(), repo, outputStream, TestContext.Current.CancellationToken);
         

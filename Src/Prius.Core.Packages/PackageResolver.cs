@@ -33,7 +33,7 @@ public sealed class PackageResolver(IPackageRepository repository)
             foreach (var package in pendingRequests.Keys())
                 versionRequest.Put(package, true);
 
-            var versionsMap = await repository.GetVersionsAsync(tfm, versionRequest, ct);
+            var versionsMap = await repository.GetVersions(tfm, versionRequest, ct);
             
             var manifestRequest = DictionaryMap.New;
             
@@ -55,7 +55,7 @@ public sealed class PackageResolver(IPackageRepository repository)
                 }
             }
 
-            var manifests = await repository.GetManifestsAsync(tfm, manifestRequest, ct);
+            var manifests = await repository.GetManifests(tfm, manifestRequest, ct);
             pendingRequests = DictionaryMap.New; 
             
             foreach (var package in manifests.Keys())

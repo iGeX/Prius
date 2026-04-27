@@ -23,7 +23,7 @@ public sealed class MockPackageRepository : IPackageRepository
             _blobs[blob.Key] = blob.Value;
     }
     
-    public async ValueTask<IMap> GetPackagesAsync(CancellationToken ct = default)
+    public async ValueTask<IMap> GetPackages(CancellationToken ct = default)
     {
         var result = DictionaryMap.New;
     
@@ -33,7 +33,7 @@ public sealed class MockPackageRepository : IPackageRepository
         return await ValueTask.FromResult(result.AsReadOnly());
     }
     
-    public ValueTask<IMap> GetVersionsAsync(string tfm, IMap ids, CancellationToken ct = default)
+    public ValueTask<IMap> GetVersions(string tfm, IMap ids, CancellationToken ct = default)
     {
         var result = DictionaryMap.New;
         foreach (var id in ids.Keys())
@@ -49,7 +49,7 @@ public sealed class MockPackageRepository : IPackageRepository
         return new ValueTask<IMap>(result);
     }
 
-    public ValueTask<IMap> GetManifestsAsync(string tfm, IMap packages, CancellationToken ct = default)
+    public ValueTask<IMap> GetManifests(string tfm, IMap packages, CancellationToken ct = default)
     {
         var result = DictionaryMap.New;
         foreach (var pair in packages.Keys())
@@ -62,7 +62,7 @@ public sealed class MockPackageRepository : IPackageRepository
         return new ValueTask<IMap>(result);
     }
 
-    public ValueTask<Stream> OpenStreamAsync(string hash, CancellationToken ct = default)
+    public ValueTask<Stream> OpenStream(string hash, CancellationToken ct = default)
     {
         if (_blobs.TryGetValue(hash, out var data))
             return new ValueTask<Stream>(new MemoryStream(data));

@@ -43,7 +43,7 @@ public static class PackagesRegistryExtensions
             if (cache.TryGetValue(cacheKey, out byte[]? cachedBytes))
                 return Results.File(cachedBytes!, "application/octet-stream", $"{id}.{version}.nupkg");
 
-            var manifests = await repo.GetManifestsAsync("any", DictionaryMap.From((id, version)), ct);
+            var manifests = await repo.GetManifests("any", DictionaryMap.From((id, version)), ct);
             var manifest = manifests.Get(id).AsMap();
             
             if (manifest.IsEmpty)
@@ -65,7 +65,7 @@ public static class PackagesRegistryExtensions
                 logger.LogDebug("Metadata requested for: {Id}", id);
 
             var baseUrl = $"{context.Request.Scheme}://{context.Request.Host}/{routePrefix}";
-            var versionsMap = await repo.GetVersionsAsync("any", DictionaryMap.From((id, true)), ct);
+            var versionsMap = await repo.GetVersions("any", DictionaryMap.From((id, true)), ct);
             var versions = versionsMap.Get(id).AsMap();
             
             if (versions.IsEmpty)
@@ -74,7 +74,7 @@ public static class PackagesRegistryExtensions
             var leafs = new List<RegistrationLeafDto>();
             foreach (var v in versions.Keys())
             {
-                var manifests = await repo.GetManifestsAsync("any", DictionaryMap.From((id, v)), ct);
+                var manifests = await repo.GetManifests("any", DictionaryMap.From((id, v)), ct);
                 var manifest = manifests.Get(id).AsMap();
                 
                 var dependencyGroups = manifest.Get("Dependencies").AsMap().Keys().Select(tfm => 
@@ -107,7 +107,7 @@ public static class PackagesRegistryExtensions
         endpoints.MapGet($"{routePrefix}/query", async (string? q, int? skip, int? take, IPackageRepository repo, HttpContext context, CancellationToken ct) =>
         {
             var baseUrl = $"{context.Request.Scheme}://{context.Request.Host}/{routePrefix}";
-            var allPackagesMap = await repo.GetPackagesAsync(ct);
+            var allPackagesMap = await repo.GetPackages(ct);
             
             var filtered = allPackagesMap.Keys(true)
                 .Where(p => string.IsNullOrEmpty(q) || p.Contains(q, StringComparison.OrdinalIgnoreCase))
@@ -122,7 +122,7 @@ public static class PackagesRegistryExtensions
 
             foreach (var id in paged)
             {
-                var versionsMap = await repo.GetVersionsAsync("any", DictionaryMap.From((id, true)), ct);
+                var versionsMap = await repo.GetVersions("any", DictionaryMap.From((id, true)), ct);
                 var sortedVersions = versionsMap.Get(id).AsMap().Keys()
                     .Select(NuGetVersion.Parse)
                     .OrderBy(v => v)
@@ -130,7 +130,7 @@ public static class PackagesRegistryExtensions
 
                 var latestVersion = sortedVersions.LastOrDefault()?.ToNormalizedString() ?? "0.0.0";
                 
-                var manifests = await repo.GetManifestsAsync("any", DictionaryMap.From((id, latestVersion)), ct);
+                var manifests = await repo.GetManifests("any", DictionaryMap.From((id, latestVersion)), ct);
                 var manifest = manifests.Get(id).AsMap();
 
                 searchResults.Add(new SearchResultDto(

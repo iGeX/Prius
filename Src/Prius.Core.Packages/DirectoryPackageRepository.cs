@@ -41,7 +41,7 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
         _watcher.EnableRaisingEvents = true;
     }
 
-    public async ValueTask<IMap> GetPackagesAsync(CancellationToken ct = default)
+    public async ValueTask<IMap> GetPackages(CancellationToken ct = default)
     {
         await EnsureInitializedAsync(ct);
         
@@ -55,7 +55,7 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
         return result;
     }
 
-    public async ValueTask<IMap> GetVersionsAsync(string tfm, IMap ids, CancellationToken ct = default)
+    public async ValueTask<IMap> GetVersions(string tfm, IMap ids, CancellationToken ct = default)
     {
         await EnsureInitializedAsync(ct);
         var result = DictionaryMap.New;
@@ -82,7 +82,7 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
         return result;
     }
 
-    public async ValueTask<IMap> GetManifestsAsync(string tfm, IMap packages, CancellationToken ct = default)
+    public async ValueTask<IMap> GetManifests(string tfm, IMap packages, CancellationToken ct = default)
     {
         await EnsureInitializedAsync(ct);
         var result = DictionaryMap.New;
@@ -109,7 +109,7 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
         return result;
     }
 
-    public async ValueTask<Stream> OpenStreamAsync(string hash, CancellationToken ct = default)
+    public async ValueTask<Stream> OpenStream(string hash, CancellationToken ct = default)
     {
         await EnsureInitializedAsync(ct);
         

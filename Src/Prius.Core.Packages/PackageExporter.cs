@@ -80,7 +80,7 @@ public static class PackageExporter
             }
 
             var entry = archive.CreateEntry(nextPath);
-            await using var source = await repo.OpenStreamAsync(hash, ct);
+            await using var source = await repo.OpenStream(hash, ct);
             await using var target = await entry.OpenAsync(ct);
             await source.CopyToAsync(target, ct);
         }
