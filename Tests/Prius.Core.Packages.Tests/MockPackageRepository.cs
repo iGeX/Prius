@@ -49,9 +49,11 @@ public sealed class MockPackageRepository : IPackageRepository
     public ValueTask<Stream> OpenStream(string hash, CancellationToken ct) => 
         new(new MemoryStream(_blobs[hash]));
 
+#pragma warning disable CS0067
     public event Func<ValueTask>? OnStasisRequested;
     
     public event Func<ValueTask>? OnBirthRequested;
     
     public event Func<ValueTask>? OnKillRequested;
+#pragma warning restore CS0067
 }

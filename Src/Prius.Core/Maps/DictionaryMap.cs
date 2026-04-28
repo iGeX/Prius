@@ -1,31 +1,37 @@
 ﻿using System.Collections;
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 
 namespace Prius.Core.Maps;
 
+[DebuggerDisplay("Count = {_dictionary.Count}")]
+[DebuggerTypeProxy(typeof(MapDebugView))]
 public sealed class DictionaryMap(IDictionary dictionary) : IMap
 {
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private readonly IDictionary _dictionary = dictionary;
+    
     public static DictionaryMap New => new(new Dictionary<string, object?>());
     
-    public bool IsEmpty => dictionary.Count is 0;
+    public bool IsEmpty => _dictionary.Count is 0;
     
     private IEnumerable<string> StringKeys => 
-        dictionary.Keys.Cast<object?>().Select(o => o?.ToString() ?? string.Empty);
+        _dictionary.Keys.Cast<object?>().Select(o => o?.ToString() ?? string.Empty);
 
     public IEnumerable<MapValue> Values => 
-        dictionary.Values.Cast<object?>().Select(v => v.ToMapValue());
+        _dictionary.Values.Cast<object?>().Select(v => v.ToMapValue());
 
-    public MapValue Get(string key) => dictionary[key].ToMapValue();
+    public MapValue Get(string key) => _dictionary[key].ToMapValue();
 
     public void Put(string key, MapValue value) =>
         value.Switch(
-            onEmpty: _ => dictionary.Remove(key),
-            onMap: map => dictionary[key] = map.DeepCopy(),
-            onString: val => dictionary[key] = val,
-            onLong: val => dictionary[key] = val,
-            onBool: val => dictionary[key] = val,
-            onDecimal: val => dictionary[key] = val,
-            onDateTimeOffset: val => dictionary[key] = val
+            onEmpty: _ => _dictionary.Remove(key),
+            onMap: map => _dictionary[key] = map.DeepCopy(),
+            onString: val => _dictionary[key] = val,
+            onLong: val => _dictionary[key] = val,
+            onBool: val => _dictionary[key] = val,
+            onDecimal: val => _dictionary[key] = val,
+            onDateTimeOffset: val => _dictionary[key] = val
         );
 
     public IEnumerable<string> Keys(bool? ascending = null)

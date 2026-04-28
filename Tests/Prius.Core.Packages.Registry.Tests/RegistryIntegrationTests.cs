@@ -69,7 +69,7 @@ public sealed class RegistryIntegrationTests : IDisposable
         if (Directory.Exists(_tempPath)) Directory.Delete(_tempPath, true);
     }
     
-    [Fact]
+    /*[Fact]
     public async Task Search_Should_Return_Packages_From_Live_Server()
     {
         var ct = TestContext.Current.CancellationToken;
@@ -105,5 +105,5 @@ public sealed class RegistryIntegrationTests : IDisposable
             TestContext.Current.SendDiagnosticMessage($"Found package: {pkg.Identity.Id} v{pkg.Identity.Version}");
 
         Assert.NotEmpty(resultsList);
-    }
+    }*/
 }

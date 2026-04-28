@@ -1,5 +1,8 @@
-﻿namespace Prius.Core.Maps;
+﻿using System.Diagnostics;
 
+namespace Prius.Core.Maps;
+
+[DebuggerTypeProxy(typeof(MapDebugView))]
 public sealed class StackedMap(IEnumerable<IMap> maps) : IMap
 {
     private readonly IEnumerable<IMap> _maps = maps ?? throw new ArgumentNullException(nameof(maps));

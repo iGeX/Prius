@@ -1,6 +1,9 @@
-﻿namespace Prius.Core.Maps;
+﻿using System.Diagnostics;
+
+namespace Prius.Core.Maps;
 
 // ReSharper disable ConditionIsAlwaysTrueOrFalseAccordingToNullableAPIContract
+[DebuggerDisplay("{ToString()}")]
 public readonly struct MapValue : IEquatable<MapValue>
 {
     private enum MapValueType : byte

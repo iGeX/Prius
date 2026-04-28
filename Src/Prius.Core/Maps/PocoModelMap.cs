@@ -1,13 +1,19 @@
 ﻿using System.Collections.Concurrent;
+using System.Diagnostics;
 using System.Reflection;
 
 namespace Prius.Core.Maps;
 
+[DebuggerDisplay("Count = {_props.Length}")]
+[DebuggerTypeProxy(typeof(MapDebugView))]
 public sealed class PocoModelMap : IMap
 {
     private static readonly ConcurrentDictionary<Type, PocoAccessor[]> TypeCache = new();
 
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private readonly IPocoModel _model;
+    
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private readonly PocoAccessor[] _props;
 
     public PocoModelMap(IPocoModel model)

@@ -1,6 +1,9 @@
-﻿namespace Prius.Core.Maps;
+﻿using System.Diagnostics;
+
+namespace Prius.Core.Maps;
 
 // ReSharper disable once ClassNeverInstantiated.Global
+[DebuggerDisplay("Empty")]
 public class Empty
 {
     public static Empty Instance { get; } = new();

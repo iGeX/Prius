@@ -1,16 +1,22 @@
-﻿namespace Prius.Core.Maps;
+﻿using System.Diagnostics;
 
+namespace Prius.Core.Maps;
+
+[DebuggerTypeProxy(typeof(MapDebugView))]
 internal sealed class ReadOnlyMap(IMap source) : IMap
 {
-    public bool IsEmpty => source.IsEmpty;
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
+    private readonly IMap _source = source;
+    
+    public bool IsEmpty => _source.IsEmpty;
 
-    public MapValue Get(string key) => source.Get(key).Match(
+    public MapValue Get(string key) => _source.Get(key).Match(
         empty => empty,
         map => new MapValue(new ReadOnlyMap(map)),
         value => value.ToMapValue()
     );
     
-    public IEnumerable<MapValue> Values => source.Values.Select(v => v.Match(
+    public IEnumerable<MapValue> Values => _source.Values.Select(v => v.Match(
         e => e,
         m => new MapValue(new ReadOnlyMap(m)),
         val => val.ToMapValue()
@@ -20,7 +26,7 @@ internal sealed class ReadOnlyMap(IMap source) : IMap
     {
     }
 
-    public IEnumerable<string> Keys(bool? ascending = null) => source.Keys(ascending);
+    public IEnumerable<string> Keys(bool? ascending = null) => _source.Keys(ascending);
     
     public bool Equals(IMap? other) => this.DeepEquals(other);
     

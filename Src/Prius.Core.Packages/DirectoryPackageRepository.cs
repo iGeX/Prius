@@ -139,33 +139,36 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
         {
             await using var stream = File.OpenRead(path);
             var map = PackageImporter.Import(stream);
-            
-            var pkg = map.DeepGet("Info/id").AsValue<string>();
-            var ver = map.DeepGet("Info/version").AsValue<string>();
-            var tracked = new List<(string, string, string)>();
+        
+            var pkg = map.DeepGet("Info/id").AsString();
+            var ver = map.DeepGet("Info/version").AsString();
+        
+            var tracked = new List<(string Tfm, string Pkg, string Ver)>();
+            var foundTfms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            var depMap = map.Get("Dependencies").AsMap();
-            var tfms = depMap.Keys().ToList();
+            foreach (var tfm in map.Get("Dependencies").AsMap().Keys())
+                foundTfms.Add(tfm);
+            foreach (var tfm in map.Get("Assets").AsMap().Get("lib").AsMap().Keys())
+                foundTfms.Add(tfm);
 
-            if (tfms.Count == 0)
-                tfms.Add("any");
+            if (foundTfms.Count == 0)
+                foundTfms.Add("any");
 
-            foreach (var tfm in tfms)
+            foreach (var tfm in foundTfms)
             {
                 var tfmStore = _manifests.GetOrAdd(tfm, _ => new(StringComparer.OrdinalIgnoreCase));
                 var pkgStore = tfmStore.GetOrAdd(pkg, _ => new(StringComparer.OrdinalIgnoreCase));
+            
                 pkgStore[ver] = map;
                 tracked.Add((tfm, pkg, ver));
             }
 
             _fileTracker[path] = tracked;
             IndexBlobs(map.Get("Assets").AsMap(), path, string.Empty);
-            
-            _logger?.LogDebug("Indexed package: {Package} {Version} from {Path}", pkg, ver, path);
         }
         catch (Exception ex)
         {
-            _logger?.LogError(ex, "Failed to index package file: {Path}", path);
+            Console.WriteLine($"[INDEX ERROR] {path}: {ex.Message}");
         }
     }
 

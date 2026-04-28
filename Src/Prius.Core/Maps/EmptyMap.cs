@@ -1,5 +1,8 @@
-﻿namespace Prius.Core.Maps;
+﻿using System.Diagnostics;
 
+namespace Prius.Core.Maps;
+
+[DebuggerDisplay("EmptyMap")]
 public sealed class EmptyMap : IMap
 {
     public static EmptyMap Instance { get; } = new();

@@ -1,14 +1,17 @@
-﻿using System.Text;
+﻿using System.Diagnostics;
+using System.Text;
 using System.Text.Json;
 
 namespace Prius.Core.Maps;
 
+[DebuggerTypeProxy(typeof(MapDebugView))]
 public sealed class JsonReaderMap(ReadOnlyMemory<byte> data) : IMap
 {
     public static JsonReaderMap From(string json) => string.IsNullOrWhiteSpace(json) 
         ? new JsonReaderMap("{}"u8.ToArray()) 
         : new JsonReaderMap(Encoding.UTF8.GetBytes(json));
 
+    [DebuggerBrowsable(DebuggerBrowsableState.Never)]
     private DictionaryMap? _materialized;
 
     public bool IsEmpty
