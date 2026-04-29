@@ -1,5 +1,4 @@
-﻿using Prius.App;
-using Prius.Core.Maps;
+﻿using Prius.Core.Maps;
 using Prius.Core.Packages;
 
 if (args.Length == 0)

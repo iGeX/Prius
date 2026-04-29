@@ -273,6 +273,22 @@ public static class MapExtensions
         return map;
     }
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static TMap With<TMap>(this TMap map, IMap subMap) where TMap : IMap
+    {
+        foreach (var key in subMap.Keys())
+            map.Put(key, subMap.Get(key));
+        return map;
+    }
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static TMap With<TMap>(this TMap map, params IMap[] subMaps) where TMap : IMap
+    {
+        foreach (var subMap in subMaps)
+            map.With(subMap);
+        return map;
+    }
+    
     public static Dictionary<string, object?> DeepCopy(this IMap map)
     {
         var result = new Dictionary<string, object?>();
