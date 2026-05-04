@@ -1,0 +1,5 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="..\Prius.Core\Prius.Core.csproj" />
+  </ItemGroup>
+</Project>
