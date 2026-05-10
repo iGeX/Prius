@@ -220,4 +220,6 @@ public ref struct MapPath
     }
 
     public override string ToString() => _path.ToString();
+
+    public ReadOnlySpan<char> AsSpan() => _path;
 }

@@ -8,6 +8,8 @@ public interface IReactorContext
     
     IMap Env { get; }
     
+    IRavenBroker Raven { get; }
+
     void Put(MapPath path, MapValue value, IMap? envPatch = null);
     
     MapValue Get(MapPath path);
