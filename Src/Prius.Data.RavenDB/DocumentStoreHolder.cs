@@ -4,27 +4,32 @@ using System;
 using System.Security.Cryptography.X509Certificates;
 using Raven.Client.Documents;
 
-public class DocumentStoreHolder : IDisposable
+public class DocumentStoreHolder(string[] urls, string database, byte[]? certBytes, string? certPass) : IDisposable
 {
-    private readonly object _lock = new();
-    private IDocumentStore _store;
+    private readonly Lock _sync = new();
+    private IDocumentStore _store = CreateStore(urls, database, certBytes, certPass);
 
     public IDocumentStore Store 
     { 
-        get { lock(_lock) return _store; } 
-    }
-
-    public DocumentStoreHolder(string[] urls, string database, byte[]? certBytes, string? certPass)
-    {
-        _store = CreateStore(urls, database, certBytes, certPass);
+        get { lock(_sync) return _store; } 
     }
 
     public void UpdateCredentials(string[] urls, string database, byte[]? certBytes, string? certPass)
     {
-        lock (_lock)
+        IDocumentStore newStore;
+        try
+        {
+            newStore = CreateStore(urls, database, certBytes, certPass);
+        }
+        catch (Exception)
+        {
+            return;
+        }
+
+        lock (_sync)
         {
             var oldStore = _store;
-            _store = CreateStore(urls, database, certBytes, certPass);
+            _store = newStore;
             oldStore?.Dispose();
         }
     }
@@ -32,10 +37,24 @@ public class DocumentStoreHolder : IDisposable
     private static IDocumentStore CreateStore(string[] urls, string database, byte[]? certBytes, string? certPass)
     {
         var store = new DocumentStore { Urls = urls, Database = database };
+        
         if (certBytes != null)
-            store.Certificate = new X509Certificate2(certBytes, certPass);
+        {
+            store.Certificate = X509CertificateLoader.LoadPkcs12(
+                certBytes, 
+                certPass, 
+                X509KeyStorageFlags.EphemeralKeySet
+            );
+        }
+
         return store.Initialize();
     }
 
-    public void Dispose() => _store?.Dispose();
+    public void Dispose()
+    {
+        lock (_sync)
+        {
+            _store?.Dispose();
+        }
+    }
 }
