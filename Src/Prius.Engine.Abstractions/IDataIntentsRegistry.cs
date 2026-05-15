@@ -1,25 +1,12 @@
 namespace Prius.Engine.Abstractions;
 
-using System.Collections.Generic;
 using System.IO;
+using System.Threading.Tasks;
+using System;
 using Core.Maps;
 
-public interface IDataIntentRegistry
+public interface IDataIntentsRegistry
 {
-    IReadOnlyList<LoadIntent> Loads {get;}
-    IReadOnlyList<QueryIntent> Queries {get;}
-    IReadOnlyList<StoreIntent> Stores {get;}
-    IReadOnlyList<PatchIntent> Patches {get;}
-    IReadOnlyList<DeleteIntent> Deletes {get;}
-    IReadOnlyList<IncrementIntent> Increments {get;}
-    IReadOnlyList<GetCountersIntent> Counters {get;}
-    IReadOnlyList<GetAttachmentsMetadataIntent> AttachmentsMetadata {get;}
-    IReadOnlyList<StoreAttachmentIntent> StoreAttachments {get;}
-    IReadOnlyList<GetAttachmentIntent> Attachments {get;}
-    IReadOnlyList<DeleteAttachmentIntent> DeleteAttachments {get;}
-    IReadOnlyList<NativeIntent> Natives {get;}
-    IReadOnlyList<SubscriptionIntent> Subscriptions {get;}
-
     void Load(string id, string output, string failure);
     void Query(IMap queryMap, string output, string failure);
     void Store(string id, IMap map, string? vector, string failure);
