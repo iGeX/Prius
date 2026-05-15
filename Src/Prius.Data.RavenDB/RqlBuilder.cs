@@ -1,4 +1,4 @@
-﻿namespace Prius.Engine;
+﻿namespace Prius.Data.RavenDB;
 
 using System;
 using System.Collections.Generic;

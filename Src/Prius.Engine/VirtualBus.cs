@@ -5,82 +5,64 @@ using System.Collections.Concurrent;
 using Core.Maps;
 using Abstractions;
 
-public sealed class VirtualBus
+public sealed class VirtualBus : IReactorContext
 {
     private readonly ConcurrentDictionary<string, IReactor> _routeCache = new(StringComparer.Ordinal);
+    
     private readonly ConcurrentDictionary<string, IReactor>.AlternateLookup<ReadOnlySpan<char>> _cacheLookup;
+    
     private readonly RoutingTrie _routingTrie;
+
+    private readonly ReactorContext _rootContext;
 
     public VirtualBus(RoutingTrie routingTrie)
     {
         _routingTrie = routingTrie ?? throw new ArgumentNullException(nameof(routingTrie));
         _cacheLookup = _routeCache.GetAlternateLookup<ReadOnlySpan<char>>();
+        _rootContext = new ReactorContext(this, string.Empty, StackedMap.New());
     }
+    
+    private static StackedMap NextEnv(IMap env, IMap? envPatch) => envPatch is null || envPatch.IsEmpty ? StackedMap.New(env) : StackedMap.New(env, envPatch);
 
-    internal void DispatchWithBroker(MapPath path, MapValue value, IMap env, Func<ReactorContext, IRavenBroker> brokerFactory)
+    internal void DispatchPut(ReactorContext caller, MapPath path, MapValue value, IMap? envPatch)
     {
-        if (!_cacheLookup.TryGetValue(path.AsSpan(), out var reactor))
-        {
-            reactor = _routingTrie.Resolve(path);
-            _cacheLookup.TryAdd(path.AsSpan(), reactor);
-        }
-
-        var context = new ReactorContext(this, path.ToString(), env, EmptyRavenBroker.Instance);
-        var contextualContext = new ReactorContext(this, path.ToString(), env, brokerFactory(context));
-        
-        reactor.Put(contextualContext, value);
-    }
-
-    internal void DispatchPut(string absolutePath, MapValue value, IMap env, IMap? envPatch)
-    {
+        var absolutePath = new MapPath(caller.AbsolutePath) + path;
         if (!_cacheLookup.TryGetValue(absolutePath.AsSpan(), out var reactor))
         {
             reactor = _routingTrie.Resolve(absolutePath);
             _cacheLookup.TryAdd(absolutePath.AsSpan(), reactor);
         }
 
-        var nextEnv = envPatch == null || envPatch.IsEmpty 
-            ? env 
-            : StackedMap.New(env, envPatch).AsReadOnly();
-
-        var context = new ReactorContext(this, absolutePath, nextEnv, EmptyRavenBroker.Instance);
+        var context = new ReactorContext(this, absolutePath, NextEnv(caller.Env, envPatch));
         
         reactor.Put(context, value);
     }
 
-    internal MapValue DispatchGet(string absolutePath, IMap env)
+    internal MapValue DispatchGet(ReactorContext caller, MapPath path, IMap? envPatch)
     {
+        var absolutePath = new MapPath(caller.AbsolutePath) + path;
         if (!_cacheLookup.TryGetValue(absolutePath.AsSpan(), out var reactor))
         {
             reactor = _routingTrie.Resolve(absolutePath);
             _cacheLookup.TryAdd(absolutePath.AsSpan(), reactor);
         }
 
-        var context = new ReactorContext(this, absolutePath, env, EmptyRavenBroker.Instance);
+        var context = new ReactorContext(this, absolutePath, NextEnv(caller.Env, envPatch));
         
         return reactor.Get(context);
     }
-
-    internal void DispatchNotify(string absolutePath, IMap changedKeys)
-    {
-        var path = new MapPath(absolutePath.AsSpan());
-        var parentPath = path.Tail;
-        
-        if (parentPath.IsEmpty)
-            return;
-
-        var parentStr = parentPath.ToString();
-
-        if (!_cacheLookup.TryGetValue(parentStr.AsSpan(), out var parentReactor))
-        {
-            parentReactor = _routingTrie.Resolve(parentStr);
-            _cacheLookup.TryAdd(parentStr.AsSpan(), parentReactor);
-        }
-
-        var context = new ReactorContext(this, parentStr, EmptyMap.Instance, EmptyRavenBroker.Instance);
-        
-        parentReactor.Put(context, new MapValue(changedKeys));
-    }
-
+    
+    internal void DispatchNotify(ReactorContext caller, IMap changedKeys) => throw new NotImplementedException();
+    
     public void ClearCache() => _routeCache.Clear();
+    
+    public string Key => string.Empty;
+
+    public IMap Env => EmptyMap.Instance;
+
+    public void Put(MapPath path, MapValue value, IMap? envPatch = null) => DispatchPut(_rootContext, path, value, envPatch);
+
+    public MapValue Get(MapPath path, IMap? envPatch = null) => DispatchGet(_rootContext, path, envPatch);
+    
+    public void Notify(IMap changedKeys) => throw new NotImplementedException();
 }
