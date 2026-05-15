@@ -14,7 +14,7 @@ public interface IRavenBroker
     
     void Delete(string id, MapPath failurePath, string? changeVector = null);
     
-    void LiveOutputTo(string topicName, MapPath livePath, MapPath failurePath);
+    void Subscription(string subscriptionName, MapPath dataPath, MapPath failurePath);
     
     void ExecuteNative(Func<IRavenNativeContext, Task> nativeAction);
 }

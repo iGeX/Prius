@@ -10,14 +10,14 @@ internal sealed class IntentRegistry
     private readonly List<StoreIntent> _stores = [];
     private readonly List<PatchIntent> _patches = [];
     private readonly List<DeleteIntent> _deletes = [];
-    private readonly List<LiveIntent> _lives = [];
+    private readonly List<SubscriptionIntent> _lives = [];
 
     public IReadOnlyList<LoadIntent> Loads => _loads;
     public IReadOnlyList<QueryIntent> Queries => _queries;
     public IReadOnlyList<StoreIntent> Stores => _stores;
     public IReadOnlyList<PatchIntent> Patches => _patches;
     public IReadOnlyList<DeleteIntent> Deletes => _deletes;
-    public IReadOnlyList<LiveIntent> Lives => _lives;
+    public IReadOnlyList<SubscriptionIntent> Subscriptions => _lives;
 
     public bool HasIntents => _loads.Count > 0 || _queries.Count > 0 || _stores.Count > 0 || _patches.Count > 0 || _deletes.Count > 0 || _lives.Count > 0;
     
@@ -40,8 +40,8 @@ internal sealed class IntentRegistry
     public void RegisterDelete(string id, string? vector, string failure, ReactorContext context) => 
         _deletes.Add(new DeleteIntent(id, vector, failure, context));
 
-    public void RegisterLive(string topic, string livePath, string failure, ReactorContext context) => 
-        _lives.Add(new LiveIntent(topic, livePath, failure, context));
+    public void RegisterSubscription(string topic, string dataPath, string failure, ReactorContext context) => 
+        _lives.Add(new SubscriptionIntent(topic, dataPath, failure, context));
 }
 
 internal record LoadIntent(string DocumentId, string OutputPath, string FailurePath, ReactorContext Context)
@@ -60,4 +60,4 @@ internal record PatchIntent(string DocumentId, string Path, MapValue Value, stri
 
 internal record DeleteIntent(string DocumentId, string? ChangeVector, string FailurePath, ReactorContext Context);
 
-internal record LiveIntent(string TopicName, string LivePath, string FailurePath, ReactorContext Context);
+internal record SubscriptionIntent(string TopicName, string SubscriptionPath, string FailurePath, ReactorContext Context);

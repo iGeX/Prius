@@ -10,13 +10,11 @@ public sealed class VirtualBus
     private readonly ConcurrentDictionary<string, IReactor> _routeCache = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, IReactor>.AlternateLookup<ReadOnlySpan<char>> _cacheLookup;
     private readonly RoutingTrie _routingTrie;
-    private readonly Func<string, IRavenBroker> _brokerFallback;
 
     public VirtualBus(RoutingTrie routingTrie)
     {
         _routingTrie = routingTrie ?? throw new ArgumentNullException(nameof(routingTrie));
         _cacheLookup = _routeCache.GetAlternateLookup<ReadOnlySpan<char>>();
-        _brokerFallback = _ => EmptyRavenBroker.Instance;
     }
 
     internal void DispatchWithBroker(MapPath path, MapValue value, IMap env, Func<ReactorContext, IRavenBroker> brokerFactory)
@@ -71,7 +69,7 @@ public sealed class VirtualBus
         if (parentPath.IsEmpty)
             return;
 
-        string parentStr = parentPath.ToString();
+        var parentStr = parentPath.ToString();
 
         if (!_cacheLookup.TryGetValue(parentStr.AsSpan(), out var parentReactor))
         {

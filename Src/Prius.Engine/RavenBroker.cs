@@ -20,8 +20,8 @@ internal sealed class RavenBroker(IntentRegistry registry, ReactorContext curren
     public void Delete(string id, MapPath failurePath, string? changeVector = null) => 
         registry.RegisterDelete(id, changeVector, failurePath.ToString(), currentContext);
 
-    public void LiveOutputTo(string topicName, MapPath livePath, MapPath failurePath) => 
-        registry.RegisterLive(topicName, livePath.ToString(), failurePath.ToString(), currentContext);
+    public void Subscription(string subscriptionName, MapPath dataPath, MapPath failurePath) => 
+        registry.RegisterSubscription(subscriptionName, dataPath.ToString(), failurePath.ToString(), currentContext);
 
     public void ExecuteNative(System.Func<IRavenNativeContext, Task> nativeAction) => 
         throw new NotSupportedException();

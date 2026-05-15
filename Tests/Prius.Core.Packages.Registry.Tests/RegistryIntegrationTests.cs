@@ -70,7 +70,7 @@ public sealed class RegistryIntegrationTests : IDisposable
     }
     
     /*[Fact]
-    public async Task Search_Should_Return_Packages_From_Live_Server()
+    public async Task Search_Should_Return_Packages_From_Subscription_Server()
     {
         var ct = TestContext.Current.CancellationToken;
         var logger = NuGet.Common.NullLogger.Instance;

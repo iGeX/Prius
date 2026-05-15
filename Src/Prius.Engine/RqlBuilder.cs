@@ -156,70 +156,70 @@ public static class RqlBuilder
         {
             var val = opMap.Get(opKey);
 
-            if (opKey == "$eq") { AppendConstraint(sb, field, "=", val, parameters); continue; }
-            if (opKey == "$neq") { AppendConstraint(sb, field, "!=", val, parameters); continue; }
-            if (opKey == "$gt") { AppendConstraint(sb, field, ">", val, parameters); continue; }
-            if (opKey == "$gte") { AppendConstraint(sb, field, ">=", val, parameters); continue; }
-            if (opKey == "$lt") { AppendConstraint(sb, field, "<", val, parameters); continue; }
-            if (opKey == "$lte") { AppendConstraint(sb, field, "<=", val, parameters); continue; }
-            if (opKey == "$null") { sb.Append(field); sb.Append(val.AsValue<bool>() ? " = null" : " != null"); continue; }
-            if (opKey == "$exists") { sb.Append("exists("); sb.Append(field); sb.Append(val.AsValue<bool>() ? ") = true" : ") = false"); continue; }
-
-            if (opKey == "$between")
+            switch (opKey)
             {
-                var fromVal = val.AsMap().Get("$from");
-                var toVal = val.AsMap().Get("$to");
-                var incFrom = val.AsMap().Get("$includeFrom").IsEmpty || val.AsMap().Get("$includeFrom").AsValue<bool>();
-                var incTo = val.AsMap().Get("$includeTo").IsEmpty || val.AsMap().Get("$includeTo").AsValue<bool>();
+                case "$eq": AppendConstraint(sb, field, "=", val, parameters); break;
+                case "$neq": AppendConstraint(sb, field, "!=", val, parameters); break;
+                case "$gt": AppendConstraint(sb, field, ">", val, parameters); break;
+                case "$gte": AppendConstraint(sb, field, ">=", val, parameters); break;
+                case "$lt": AppendConstraint(sb, field, "<", val, parameters); break;
+                case "$lte": AppendConstraint(sb, field, "<=", val, parameters); break;
+                case "$null":
+                    sb.Append(field);
+                    sb.Append(val.AsValue<bool>() ? " = null" : " != null");
+                    break;
+                case "$exists":
+                    sb.Append("exists(");
+                    sb.Append(field);
+                    sb.Append(val.AsValue<bool>() ? ") = true" : ") = false");
+                    break;
+                case "$between":
+                    var fromVal = val.AsMap().Get("$from");
+                    var toVal = val.AsMap().Get("$to");
+                    var incFrom = val.AsMap().Get("$includeFrom").IsEmpty || val.AsMap().Get("$includeFrom").AsValue<bool>();
+                    var incTo = val.AsMap().Get("$includeTo").IsEmpty || val.AsMap().Get("$includeTo").AsValue<bool>();
 
-                AppendConstraint(sb, field, incFrom ? ">=" : ">", fromVal, parameters);
-                sb.Append(" and ");
-                AppendConstraint(sb, field, incTo ? "<=" : "<", toVal, parameters);
-                continue;
-            }
+                    AppendConstraint(sb, field, incFrom ? ">=" : ">", fromVal, parameters);
+                    sb.Append(" and ");
+                    AppendConstraint(sb, field, incTo ? "<=" : "<", toVal, parameters);
+                    break;
+                case "$in":
+                case "$all":
+                    sb.Append(field);
+                    sb.Append(opKey == "$in" ? " in (" : " all in (");
+                    var first = true;
+                    foreach (var itemKey in val.AsMap().Keys())
+                    {
+                        if (!first)
+                            sb.Append(", ");
+                        first = false;
+                        var pName = "p" + parameters.Count.ToIndexString();
+                        parameters.Add(pName, itemKey);
+                        sb.Append('$');
+                        sb.Append(pName);
+                    }
+                    sb.Append(')');
+                    break;
+                case "$search":
+                    var term = val.AsMap().Get("$term").AsString();
+                    var options = val.AsMap().Get("$options").AsMap();
+                    var searchOp = options.Get("Operator").IsEmpty ? "OR" : options.Get("Operator").AsString();
+                    var boost = options.Get("Boost");
 
-            if (opKey == "$in" || opKey == "$all")
-            {
-                sb.Append(field);
-                sb.Append(opKey == "$in" ? " in (" : " all in (");
-                var first = true;
-                foreach (var itemKey in val.AsMap().Keys())
-                {
-                    if (!first)
-                        sb.Append(", ");
-                    first = false;
-                    var pName = "p" + parameters.Count.ToIndexString();
-                    parameters.Add(pName, itemKey);
-                    sb.Append('$');
-                    sb.Append(pName);
-                }
-                sb.Append(')');
-                continue;
-            }
+                    var pName1 = "p" + parameters.Count.ToIndexString();
+                    parameters.Add(pName1, term);
 
-            if (opKey == "$search")
-            {
-                var term = val.AsMap().Get("$term").AsString();
-                var options = val.AsMap().Get("$options").AsMap();
-                var searchOp = options.Get("Operator").IsEmpty ? "OR" : options.Get("Operator").AsString();
-                var boost = options.Get("Boost");
+                    sb.Append($"search({field}, ${pName1}");
+                    if (searchOp == "AND")
+                        sb.Append(", AND");
+                    sb.Append(')');
 
-                var pName = "p" + parameters.Count.ToIndexString();
-                parameters.Add(pName, term);
-
-                sb.Append("search(");
-                sb.Append(field);
-                sb.Append(", $");
-                sb.Append(pName);
-                if (searchOp == "AND")
-                    sb.Append(", AND");
-                sb.Append(')');
-
-                if (boost.IsEmpty)
-                    continue;
-                
-                sb.Append(" boost ");
-                sb.Append(boost.AsValue<double>().ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    if (!boost.IsEmpty)
+                    {
+                        sb.Append(" boost ");
+                        sb.Append(boost.AsValue<double>().ToString(System.Globalization.CultureInfo.InvariantCulture));
+                    }
+                    break;
             }
         }
     }
@@ -334,10 +334,19 @@ public static class RqlBuilder
         foreach (var opKey in funcMap.Keys())
         {
             var field = NormalizePath(funcMap.Get(opKey).AsString());
-            if (opKey == "$sum") { sb.Append("sum("); sb.Append(field); sb.Append(") as "); sb.Append(alias); continue; }
-            if (opKey == "$avg") { sb.Append("avg("); sb.Append(field); sb.Append(") as "); sb.Append(alias); continue; }
-            if (opKey == "$min") { sb.Append("min("); sb.Append(field); sb.Append(") as "); sb.Append(alias); continue; }
-            if (opKey == "$max") { sb.Append("max("); sb.Append(field); sb.Append(") as "); sb.Append(alias); continue; }
+            var segment = opKey switch
+            {
+                "$sum" => $"sum({field}) as {alias}",
+                "$avg" => $"avg({field}) as {alias}",
+                "$min" => $"min({field}) as {alias}",
+                "$max" => $"max({field}) as {alias}",
+                _ => null
+            };
+            
+            if (segment != null)
+            {
+                sb.Append(segment);
+            }
         }
     }
 

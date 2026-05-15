@@ -1,0 +1,12 @@
+{
+  "context": {
+    "allowedDirectories": ["./"],
+    "fileName": [
+      "system.md",
+      "context.md"
+    ]
+  },
+  "tools": {
+    "sandboxAllowedPaths": []
+  }
+}

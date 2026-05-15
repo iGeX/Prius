@@ -371,3 +371,6 @@ FodyWeavers.xsd
 /scripts/volumes/*
 /.ai/**
 **.env.*.local
+
+# C# Dev Kit
+*.lscache

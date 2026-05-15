@@ -19,7 +19,7 @@ internal sealed class EmptyRavenBroker : IRavenBroker
     
     public void Delete(string id, MapPath failurePath, string? changeVector = null) { }
     
-    public void LiveOutputTo(string topicName, MapPath livePath, MapPath failurePath) { }
+    public void Subscription(string subscriptionName, MapPath dataPath, MapPath failurePath) { }
     
     public void ExecuteNative(Func<IRavenNativeContext, Task> nativeAction) { }
 }
