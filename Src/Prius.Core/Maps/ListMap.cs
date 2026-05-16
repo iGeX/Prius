@@ -14,12 +14,12 @@ public sealed class ListMap(IList list) : IMap
 
     public bool IsEmpty => _list.Count is 0;
     
-    public IEnumerable<MapValue> Values => _list.Cast<object>().Select(MapExtensions.ToMapValue);
+    public IEnumerable<MapValue> Values => _list.Cast<object>().Select(MapExtensions.AsMapValue);
 
     public MapValue Get(string key)
     {
         if (int.TryParse(key, out var index) && index >= 0 && index < _list.Count)
-            return _list[index].ToMapValue();
+            return _list[index].AsMapValue();
         return Empty.Instance;
     }
 

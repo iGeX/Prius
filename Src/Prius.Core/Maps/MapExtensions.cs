@@ -329,7 +329,7 @@ public static class MapExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static MapValue ToMapValue(this object? obj) => obj switch
+    public static MapValue AsMapValue(this object? obj) => obj switch
     {
         null or Empty => Empty.Instance,
         IMap map => new MapValue(map),

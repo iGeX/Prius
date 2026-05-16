@@ -36,12 +36,12 @@ public sealed class PocoModelMap : IMap
         return keys;
     }
 
-    public IEnumerable<MapValue> Values => _props.Select(p => p.GetValue(_model).ToMapValue());
+    public IEnumerable<MapValue> Values => _props.Select(p => p.GetValue(_model).AsMapValue());
 
     public MapValue Get(string key)
     {
         var prop = _props.FirstOrDefault(p => string.Equals(p.Name, key, StringComparison.Ordinal));
-        return prop != null ? prop.GetValue(_model).ToMapValue() : Empty.Instance;
+        return prop != null ? prop.GetValue(_model).AsMapValue() : Empty.Instance;
     }
 
     public void Put(string key, MapValue value)

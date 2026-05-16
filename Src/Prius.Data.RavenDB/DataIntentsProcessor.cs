@@ -11,6 +11,8 @@ using Microsoft.Extensions.Logging;
 
 public sealed class DataIntentsProcessor
 {
+    private const int MaxRetries = 3;
+    
     private readonly DocumentStoreHolder _holder;
     private readonly IDataIntentsProvider _provider;
     private readonly ILogger<DataIntentsProcessor> _logger;
@@ -48,9 +50,8 @@ public sealed class DataIntentsProcessor
         {
             var intent = await popFunc(ct);
             var retryCount = 0;
-            const int maxRetries = 3;
 
-            while (retryCount < maxRetries)
+            while (true)
             {
                 try
                 {
@@ -59,16 +60,21 @@ public sealed class DataIntentsProcessor
                 }
                 catch (OperationCanceledException)
                 {
-                    _logger.LogInformation("Intent {IntentInfo} was cancelled", GetIntentInfo(intent));
+                    _logger.LogInformation("Intent {IntentType} was cancelled", intent?.GetType().Name);
                     break;
                 }
                 catch (Exception ex)
                 {
                     retryCount++;
-                    if (retryCount >= maxRetries)
+                    if (retryCount >= MaxRetries)
                     {
-                        _logger.LogError(ex, "Failed to process intent {IntentInfo} after {RetryCount} retries", GetIntentInfo(intent), maxRetries);
-                        RecordFailure(intent, ex);
+                        if (intent is not null)
+                        {
+                            _logger.LogError(ex, "Failed to process intent {IntentInfo} after {RetryCount} retries", 
+                                GetFullIntentInfo(intent), MaxRetries);
+                            RecordFailure(intent, ex);
+                        }
+
                         break;
                     }
 
@@ -79,6 +85,24 @@ public sealed class DataIntentsProcessor
         }
     }
 
+    private static string GetFullIntentInfo(object intent) => intent switch
+    {
+        LoadIntent l => $"Load(Id={l.DocumentId}, Out={l.OutputPath})",
+        QueryIntent q => $"Query(Map={q.QueryMap.Serialize()})",
+        StoreIntent s => $"Store(Id={s.DocumentId}, Vector={s.ChangeVector}, Map={s.Map.Serialize()})",
+        PatchIntent p => $"Patch(Id={p.DocumentId}, Path={p.Path}, Val={p.Value})",
+        DeleteIntent d => $"Delete(Id={d.DocumentId}, Vector={d.ChangeVector})",
+        IncrementIntent i => $"Increment(Id={i.DocumentId}, Name={i.CounterName}, Delta={i.Delta})",
+        GetCountersIntent gc => $"GetCounters(Id={gc.DocumentId}, Out={gc.OutputPath})",
+        GetAttachmentsMetadataIntent gam => $"GetAttachmentsMetadata(Id={gam.DocumentId}, Out={gam.OutputPath})",
+        StoreAttachmentIntent sa => $"StoreAttachment(Id={sa.DocumentId}, Name={sa.Name}, Type={sa.ContentType})",
+        GetAttachmentIntent ga => $"GetAttachment(Id={ga.DocumentId}, Name={ga.Name}, Out={ga.OutputPath})",
+        DeleteAttachmentIntent da => $"DeleteAttachment(Id={da.DocumentId}, Name={da.Name})",
+        NativeIntent n => $"Native(Action={n.Action.Method.Name})",
+        SubscriptionIntent sub => $"Subscription(Topic={sub.TopicName}, Path={sub.SubscriptionPath})",
+        _ => intent.GetType().Name
+    };
+
     private static void RecordFailure(object intent, Exception ex)
     {
         if (intent is not IIntent i)
@@ -87,18 +111,8 @@ public sealed class DataIntentsProcessor
         var failureMap = DictionaryMap.New.With(
             ("Message", ex.Message), 
             ("Type", ex.GetType().Name));
-        i.Context.Put(i.FailurePath, failureMap.ToMapValue());
+        i.Context.Put(i.FailurePath, failureMap.AsMapValue());
     }
-
-    private static string GetIntentInfo(object intent)
-    {
-        if (intent is LoadIntent l)
-            return $"Load({l.DocumentId})";
-        if (intent is QueryIntent q)
-            return $"Query({q.QueryMap.Get("From")})";
-        return intent.GetType().Name;
-    }
-
 
     private async Task HandleLoad(LoadIntent i)
     {
@@ -111,6 +125,7 @@ public sealed class DataIntentsProcessor
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to load document: {DocumentId}", i.DocumentId);
+            throw;
         }
     }
     
@@ -131,13 +146,10 @@ public sealed class DataIntentsProcessor
             var results = await query.ToListAsync(i.Token);
             _logger.LogInformation("Executed query against index {Index} returning {Count} results", i.QueryMap.Get("From"), results.Count);
         }
-        catch (OperationCanceledException)
-        {
-            
-        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to execute query");
+            throw;
         }
     }
 

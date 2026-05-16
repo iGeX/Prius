@@ -19,9 +19,9 @@ public sealed class DictionaryMap(IDictionary dictionary) : IMap
         _dictionary.Keys.Cast<object?>().Select(o => o?.ToString() ?? string.Empty);
 
     public IEnumerable<MapValue> Values => 
-        _dictionary.Values.Cast<object?>().Select(v => v.ToMapValue());
+        _dictionary.Values.Cast<object?>().Select(v => v.AsMapValue());
 
-    public MapValue Get(string key) => _dictionary[key].ToMapValue();
+    public MapValue Get(string key) => _dictionary[key].AsMapValue();
 
     public void Put(string key, MapValue value) =>
         value.Switch(

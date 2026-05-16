@@ -13,13 +13,13 @@ internal sealed class ReadOnlyMap(IMap source) : IMap
     public MapValue Get(string key) => _source.Get(key).Match(
         empty => empty,
         map => new MapValue(new ReadOnlyMap(map)),
-        value => value.ToMapValue()
+        value => value.AsMapValue()
     );
     
     public IEnumerable<MapValue> Values => _source.Values.Select(v => v.Match(
         e => e,
         m => new MapValue(new ReadOnlyMap(m)),
-        val => val.ToMapValue()
+        val => val.AsMapValue()
     ));
 
     public void Put(string key, MapValue value)
