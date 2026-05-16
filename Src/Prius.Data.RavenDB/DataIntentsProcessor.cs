@@ -5,15 +5,22 @@ using System.Threading;
 using System.Threading.Tasks;
 using Prius.Engine.Abstractions;
 
+using Microsoft.Extensions.Logging;
+
 public class DataIntentsProcessor
 {
     private readonly DocumentStoreHolder _holder;
     private readonly IDataIntentsProvider _provider;
+    private readonly ILogger<DataIntentsProcessor> _logger;
 
-    public DataIntentsProcessor(DocumentStoreHolder holder, IDataIntentsProvider provider)
+    public DataIntentsProcessor(
+        DocumentStoreHolder holder, 
+        IDataIntentsProvider provider, 
+        ILogger<DataIntentsProcessor> logger)
     {
         _holder = holder;
         _provider = provider;
+        _logger = logger;
     }
 
     public async Task StartAsync(CancellationToken ct)
@@ -44,13 +51,53 @@ public class DataIntentsProcessor
                 var intent = await popFunc(ct);
                 await handler(intent);
             }
-            catch (OperationCanceledException) { break; }
-            catch (Exception ex) { /* Log error */ }
+            catch (OperationCanceledException)
+            {
+                break;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in intent processing loop for {IntentType}", typeof(T).Name);
+            }
         }
     }
 
-    private async Task HandleLoad(LoadIntent i) => await Task.CompletedTask;
-    private async Task HandleQuery(QueryIntent i) => await Task.CompletedTask;
+    private async Task HandleLoad(LoadIntent i)
+    {
+        try
+        {
+            using var session = _holder.Store.OpenAsyncSession();
+            var document = await session.LoadAsync<object>(i.DocumentId);
+            _logger.LogInformation("Loaded document: {DocumentId}", i.DocumentId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to load document: {DocumentId}", i.DocumentId);
+        }
+    }
+    
+    private async Task HandleQuery(QueryIntent i)
+    {
+        try
+        {
+            var (rql, parameters) = RqlBuilder.Build(i.QueryMap);
+            if (string.IsNullOrEmpty(rql))
+                return;
+
+            using var session = _holder.Store.OpenAsyncSession();
+            var query = session.Advanced.AsyncRawQuery<object>(rql);
+            
+            foreach (var param in parameters)
+                query.AddParameter(param.Key, param.Value);
+
+            var results = await query.ToListAsync();
+            _logger.LogInformation("Executed query against index {Index} returning {Count} results", i.QueryMap.Get("From"), results.Count);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to execute query");
+        }
+    }
     private async Task HandleStore(StoreIntent i) => await Task.CompletedTask;
     private async Task HandlePatch(PatchIntent i) => await Task.CompletedTask;
     private async Task HandleDelete(DeleteIntent i) => await Task.CompletedTask;

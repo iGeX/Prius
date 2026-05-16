@@ -1,15 +1,13 @@
-﻿namespace Prius.Data.RavenDB;
+namespace Prius.Data.RavenDB;
 
 using System;
 using System.Collections.Generic;
 using System.Text;
+using System.Linq;
 using Core.Maps;
 
 public static class RqlBuilder
 {
-    /// <summary>
-    /// Компилирует QueryMap в нативную RQL строку и словарь параметров.
-    /// </summary>
     public static (string Rql, Dictionary<string, object> Parameters) Build(IMap? queryMap)
     {
         if (queryMap == null || queryMap.IsEmpty)
@@ -18,58 +16,113 @@ public static class RqlBuilder
         var sb = new StringBuilder();
         var parameters = new Dictionary<string, object>(StringComparer.Ordinal);
 
-        // 1. Секция FROM
         var fromVal = queryMap.Get("From");
         if (fromVal.IsEmpty)
             return (string.Empty, []);
 
-        sb.Append("from ");
-        sb.Append(fromVal.AsString());
-        sb.Append(' ');
-
-        // 2. Секция INCLUDE
-        var includeMap = queryMap.Get("Include").AsMap();
-        if (!includeMap.IsEmpty)
-            BuildInclude(sb, includeMap);
-
-        // 3. Секция WHERE
-        var whereMap = queryMap.Get("Where").AsMap();
-        if (!whereMap.IsEmpty)
-        {
-            sb.Append("where ");
-            BuildWhere(sb, whereMap, parameters);
-            sb.Append(' ');
-        }
-
-        // 4. Секция GROUP BY
-        var groupByMap = queryMap.Get("GroupBy").AsMap();
-        if (!groupByMap.IsEmpty)
-            BuildGroupBy(sb, groupByMap);
-
-        // 5. Секция ORDER BY
-        var orderByMap = queryMap.Get("OrderBy").AsMap();
-        if (!orderByMap.IsEmpty)
-            BuildOrderBy(sb, orderByMap);
-
-        // 6. Секция SELECT / REDUCE
-        var selectVal = queryMap.Get("Select");
-        if (!selectVal.IsEmpty)
-            BuildSelect(sb, selectVal, queryMap.Get("Reduce").AsMap());
-
-        // 7. Секция PAGINATION (Skip, Take)
-        var skipVal = queryMap.Get("Skip");
-        var takeVal = queryMap.Get("Take");
-        if (!skipVal.IsEmpty || !takeVal.IsEmpty)
-        {
-            var skip = skipVal.IsEmpty ? 0 : skipVal.AsInt();
-            var take = takeVal.IsEmpty ? int.MaxValue : takeVal.AsInt();
-            sb.Append("limit ");
-            sb.Append(skip);
-            sb.Append(", ");
-            sb.Append(take);
-        }
+        BuildFrom(sb, fromVal, queryMap.Get("TimeSeries").AsMap());
+        BuildInclude(sb, queryMap.Get("Include").AsMap());
+        BuildWhereAndSpatial(sb, queryMap, parameters);
+        BuildGroupByAndFacets(sb, queryMap);
+        BuildOrderBy(sb, queryMap.Get("OrderBy").AsMap());
+        BuildSelect(sb, queryMap.Get("Select"), queryMap.Get("Reduce").AsMap());
+        BuildLimit(sb, queryMap.Get("Skip"), queryMap.Get("Take"));
 
         return (sb.ToString().TrimEnd(), parameters);
+    }
+    
+    private static void BuildFrom(StringBuilder sb, MapValue fromVal, IMap tsMap)
+    {
+        if (tsMap.IsEmpty)
+        {
+            sb.Append("from index '");
+            sb.Append(fromVal.AsString());
+            sb.Append("' ");
+            return;
+        }
+
+        sb.Append("from index '");
+        sb.Append(fromVal.AsString());
+        sb.Append("' timeseries(");
+        sb.Append(tsMap.Get("Name").AsString());
+        sb.Append(") ");
+    }
+    
+    private static void BuildWhereAndSpatial(StringBuilder sb, IMap queryMap, Dictionary<string, object> parameters)
+    {
+        var whereMap = queryMap.Get("Where").AsMap();
+        var spatialMap = queryMap.Get("Spatial").AsMap();
+        
+        var hasWhere = !whereMap.IsEmpty;
+        var hasSpatial = !spatialMap.IsEmpty;
+
+        if (!hasWhere && !hasSpatial)
+            return;
+
+        sb.Append("where ");
+        
+        if (hasWhere)
+            BuildWhere(sb, whereMap, parameters);
+
+        if (hasSpatial)
+        {
+            if (hasWhere)
+                sb.Append(" and ");
+            BuildSpatial(sb, spatialMap);
+        }
+        sb.Append(' ');
+    }
+
+    private static void BuildSpatial(StringBuilder sb, IMap spatialMap)
+    {
+        var field = NormalizePath(spatialMap.Get("Field").AsString());
+        var op = spatialMap.Keys().FirstOrDefault(k => k.StartsWith('$'));
+        
+        if (op != "$within")
+            return;
+
+        var circle = spatialMap.Get("$within").AsMap().Get("Circle").AsMap();
+        var lat = circle.Get("Latitude").AsValue<double>();
+        var lng = circle.Get("Longitude").AsValue<double>();
+        var radius = circle.Get("Radius").AsValue<double>();
+
+        sb.Append($"spatial.within({field}, spatial.circle({lat}, {lng}, {radius}))");
+    }
+
+    private static void BuildGroupByAndFacets(StringBuilder sb, IMap queryMap)
+    {
+        var groupBy = queryMap.Get("GroupBy").AsMap();
+        var facets = queryMap.Get("Facets").AsMap();
+
+        if (!groupBy.IsEmpty)
+        {
+            sb.Append("group by ");
+            var first = true;
+            foreach (var key in groupBy.Keys())
+            {
+                if (!first)
+                    sb.Append(", ");
+                first = false;
+                sb.Append(NormalizePath(key));
+            }
+            sb.Append(' ');
+            return;
+        }
+
+        if (!facets.IsEmpty)
+        {
+            // Placeholder for facets
+        }
+    }
+
+    private static void BuildLimit(StringBuilder sb, MapValue skipVal, MapValue takeVal)
+    {
+        if (skipVal.IsEmpty && takeVal.IsEmpty)
+            return;
+
+        var skip = skipVal.IsEmpty ? 0 : skipVal.AsInt();
+        var take = takeVal.IsEmpty ? int.MaxValue : takeVal.AsInt();
+        sb.Append($"limit {skip}, {take}");
     }
 
     private static void BuildInclude(StringBuilder sb, IMap includeMap)
@@ -93,14 +146,12 @@ public static class RqlBuilder
             first = false;
             var val = whereMap.Get(key);
 
-            // Обработка логических блоков первого уровня ($or, $and)
             if (key == "$or" || key == "$and")
             {
                 BuildLogicalBlock(sb, key, val.AsMap(), parameters);
                 continue;
             }
 
-            // Обработка JavaScript фильтрации на сервере
             if (key == "$js")
             {
                 sb.Append("javascript(");
@@ -109,17 +160,14 @@ public static class RqlBuilder
                 continue;
             }
 
-            // Стандартное поле/путь
             var normalizedKey = NormalizePath(key);
             
             if (!val.IsMap)
             {
-                // Простая проверка на равенство: Field = $p0
                 AppendConstraint(sb, normalizedKey, "=", val, parameters);
                 continue;
             }
 
-            // Вложенная мапа оператора
             BuildOperatorExpression(sb, normalizedKey, val.AsMap(), parameters);
         }
     }
@@ -231,7 +279,6 @@ public static class RqlBuilder
         sb.Append(op);
         sb.Append(' ');
 
-        // Если это сравнение полей документа между собой через оператор $field
         if (val.IsMap && !val.AsMap().Get("$field").IsEmpty)
         {
             sb.Append(NormalizePath(val.AsMap().Get("$field").AsString()));
@@ -242,20 +289,6 @@ public static class RqlBuilder
         parameters.Add(pName, val.AsValue() ?? DBNull.Value);
         sb.Append('$');
         sb.Append(pName);
-    }
-
-    private static void BuildGroupBy(StringBuilder sb, IMap groupByMap)
-    {
-        sb.Append("group by ");
-        var first = true;
-        foreach (var key in groupByMap.Keys())
-        {
-            if (!first)
-                sb.Append(", ");
-            first = false;
-            sb.Append(NormalizePath(key));
-        }
-        sb.Append(' ');
     }
 
     private static void BuildOrderBy(StringBuilder sb, IMap orderByMap)
@@ -288,7 +321,6 @@ public static class RqlBuilder
     {
         sb.Append("select ");
 
-        // Проверка на встроенный серверный JavaScript блок в проекции
         if (selectVal.IsMap && !selectVal.AsMap().Get("$js").IsEmpty)
         {
             sb.Append('{');
@@ -298,7 +330,6 @@ public static class RqlBuilder
             return;
         }
 
-        // Если есть агрегации Reduce — они формируют блок select функций
         if (!reduceMap.IsEmpty)
         {
             var first = true;
@@ -314,7 +345,6 @@ public static class RqlBuilder
             return;
         }
 
-        // Обычный плоский проекционный маппинг полей
         if (selectVal.IsMap)
         {
             var first = true;
@@ -344,9 +374,7 @@ public static class RqlBuilder
             };
             
             if (segment != null)
-            {
                 sb.Append(segment);
-            }
         }
     }
 
@@ -354,7 +382,6 @@ public static class RqlBuilder
     {
         if (string.IsNullOrEmpty(path))
             return string.Empty;
-        // Заменяем слэши на точки для RQL, но сохраняем синтаксис коллекций []
         return path.Replace('/', '.');
     }
 }

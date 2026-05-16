@@ -2,16 +2,33 @@ namespace Prius.Data.RavenDB;
 
 using System;
 using System.Security.Cryptography.X509Certificates;
+using Microsoft.Extensions.Logging;
 using Raven.Client.Documents;
 
-public class DocumentStoreHolder(string[] urls, string database, byte[]? certBytes, string? certPass) : IDisposable
+public class DocumentStoreHolder : IDisposable
 {
     private readonly Lock _sync = new();
-    private IDocumentStore _store = CreateStore(urls, database, certBytes, certPass);
+    private readonly ILogger<DocumentStoreHolder> _logger;
+    private IDocumentStore _store;
+
+    public DocumentStoreHolder(
+        string[] urls, 
+        string database, 
+        byte[]? certBytes, 
+        string? certPass, 
+        ILogger<DocumentStoreHolder> logger)
+    {
+        _logger = logger;
+        _store = CreateStore(urls, database, certBytes, certPass);
+    }
 
     public IDocumentStore Store 
     { 
-        get { lock(_sync) return _store; } 
+        get 
+        { 
+            lock (_sync) 
+                return _store; 
+        } 
     }
 
     public void UpdateCredentials(string[] urls, string database, byte[]? certBytes, string? certPass)
@@ -21,8 +38,9 @@ public class DocumentStoreHolder(string[] urls, string database, byte[]? certByt
         {
             newStore = CreateStore(urls, database, certBytes, certPass);
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            _logger.LogError(ex, "Failed to update RavenDB credentials");
             return;
         }
 
@@ -30,12 +48,14 @@ public class DocumentStoreHolder(string[] urls, string database, byte[]? certByt
         {
             var oldStore = _store;
             _store = newStore;
+            _logger.LogInformation("Document store updated successfully");
             oldStore?.Dispose();
         }
     }
 
-    private static IDocumentStore CreateStore(string[] urls, string database, byte[]? certBytes, string? certPass)
+    private IDocumentStore CreateStore(string[] urls, string database, byte[]? certBytes, string? certPass)
     {
+        _logger.LogInformation("Initializing DocumentStore for {Database} at {Urls}", database, string.Join(", ", urls));
         var store = new DocumentStore { Urls = urls, Database = database };
         
         if (certBytes != null)
