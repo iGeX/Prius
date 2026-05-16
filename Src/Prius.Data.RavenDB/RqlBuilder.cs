@@ -23,10 +23,10 @@ public static class RqlBuilder
         BuildFrom(sb, fromVal, queryMap.Get("TimeSeries").AsMap());
         BuildInclude(sb, queryMap.Get("Include").AsMap());
         BuildWhereAndSpatial(sb, queryMap, parameters);
-        BuildGroupByAndFacets(sb, queryMap);
+        BuildGroupByAndFacets(sb, queryMap, parameters);
         BuildOrderBy(sb, queryMap.Get("OrderBy").AsMap());
         BuildSelect(sb, queryMap.Get("Select"), queryMap.Get("Reduce").AsMap());
-        BuildLimit(sb, queryMap.Get("Skip"), queryMap.Get("Take"));
+        BuildLimit(sb, queryMap.Get("Skip"), queryMap.Get("Take"), parameters);
 
         return (sb.ToString().TrimEnd(), parameters);
     }
@@ -68,12 +68,12 @@ public static class RqlBuilder
         {
             if (hasWhere)
                 sb.Append(" and ");
-            BuildSpatial(sb, spatialMap);
+            BuildSpatial(sb, spatialMap, parameters);
         }
         sb.Append(' ');
     }
 
-    private static void BuildSpatial(StringBuilder sb, IMap spatialMap)
+    private static void BuildSpatial(StringBuilder sb, IMap spatialMap, Dictionary<string, object> parameters)
     {
         var field = NormalizePath(spatialMap.Get("Field").AsString());
         var op = spatialMap.Keys().FirstOrDefault(k => k.StartsWith('$'));
@@ -82,14 +82,20 @@ public static class RqlBuilder
             return;
 
         var circle = spatialMap.Get("$within").AsMap().Get("Circle").AsMap();
-        var lat = circle.Get("Latitude").AsValue<double>();
-        var lng = circle.Get("Longitude").AsValue<double>();
-        var radius = circle.Get("Radius").AsValue<double>();
+        
+        var pLat = "p" + parameters.Count.ToIndexString();
+        parameters.Add(pLat, circle.Get("Latitude").AsValue<double>());
+        
+        var pLng = "p" + parameters.Count.ToIndexString();
+        parameters.Add(pLng, circle.Get("Longitude").AsValue<double>());
+        
+        var pRad = "p" + parameters.Count.ToIndexString();
+        parameters.Add(pRad, circle.Get("Radius").AsValue<double>());
 
-        sb.Append($"spatial.within({field}, spatial.circle({lat}, {lng}, {radius}))");
+        sb.Append($"spatial.within({field}, spatial.circle(${pLat}, ${pLng}, ${pRad}))");
     }
 
-    private static void BuildGroupByAndFacets(StringBuilder sb, IMap queryMap)
+    private static void BuildGroupByAndFacets(StringBuilder sb, IMap queryMap, Dictionary<string, object> parameters)
     {
         var groupBy = queryMap.Get("GroupBy").AsMap();
         var facets = queryMap.Get("Facets").AsMap();
@@ -111,17 +117,38 @@ public static class RqlBuilder
 
         if (!facets.IsEmpty)
         {
-            // Placeholder for facets
+            sb.Append("select ");
+            var first = true;
+            foreach (var key in facets.Keys())
+            {
+                if (!first)
+                    sb.Append(", ");
+                first = false;
+
+                var facetMap = facets.Get(key).AsMap();
+                var function = facetMap.Get("Function").AsString(); // e.g. "count", "sum"
+                var field = NormalizePath(facetMap.Get("Field").AsString());
+
+                sb.Append($"{function}({field}) as {key}");
+            }
+            sb.Append(' ');
         }
     }
 
     private const int DefaultLimit = 1024;
 
-    private static void BuildLimit(StringBuilder sb, MapValue skipVal, MapValue takeVal)
+    private static void BuildLimit(StringBuilder sb, MapValue skipVal, MapValue takeVal, Dictionary<string, object> parameters)
     {
         var skip = skipVal.IsEmpty ? 0 : skipVal.AsInt();
         var take = takeVal.IsEmpty ? DefaultLimit : takeVal.AsInt();
-        sb.Append($"limit {skip}, {take}");
+        
+        var pSkip = "p" + parameters.Count.ToIndexString();
+        parameters.Add(pSkip, skip);
+        
+        var pTake = "p" + parameters.Count.ToIndexString();
+        parameters.Add(pTake, take);
+
+        sb.Append($"limit ${pSkip}, ${pTake}");
     }
 
     private static void BuildInclude(StringBuilder sb, IMap includeMap)

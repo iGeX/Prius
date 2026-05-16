@@ -3,7 +3,7 @@ namespace Prius.Engine;
 using System.Threading.Channels;
 using System.Threading;
 using System.Threading.Tasks;
-using Prius.Engine.Abstractions;
+using Abstractions;
 using Core.Maps;
 using System.IO;
 using System;
@@ -38,93 +38,94 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
     public async ValueTask<NativeIntent> PopNative(CancellationToken ct) => await _natives.Reader.ReadAsync(ct);
     public async ValueTask<SubscriptionIntent> PopSubscription(CancellationToken ct) => await _subscriptions.Reader.ReadAsync(ct);
 
-    public CancellationTokenSource Load(IReactorContext context, string id, string output, string failure)
+    public CancellationTokenSource Load(IReactorContext context, string documentId, MapPath outputPath, MapPath failurePath)
     {
         var cts = new CancellationTokenSource();
-        _loads.Writer.TryWrite(new LoadIntent(context, id, output, failure, cts.Token));
+        _loads.Writer.TryWrite(new LoadIntent(context, documentId, outputPath, failurePath, cts.Token));
         return cts;
     }
 
-    public CancellationTokenSource Query(IReactorContext context, IMap queryMap, string output, string failure)
+    public CancellationTokenSource Query(IReactorContext context, IMap queryMap, MapPath outputPath, MapPath failurePath)
     {
         var cts = new CancellationTokenSource();
-        _queries.Writer.TryWrite(new QueryIntent(context, queryMap, output, failure, cts.Token));
+        _queries.Writer.TryWrite(new QueryIntent(context, queryMap, outputPath, failurePath, cts.Token));
         return cts;
     }
 
-    public CancellationTokenSource Store(IReactorContext context, string id, IMap map, string? vector, string failure)
+    public CancellationTokenSource Store(IReactorContext context, IMap map, MapPath failurePath)
     {
         var cts = new CancellationTokenSource();
-        _stores.Writer.TryWrite(new StoreIntent(context, id, map, vector, failure, cts.Token));
+        _stores.Writer.TryWrite(new StoreIntent(context, map, failurePath, cts.Token));
         return cts;
     }
 
-    public CancellationTokenSource Patch(IReactorContext context, string id, string path, MapValue val, string failure)
+    public CancellationTokenSource Patch(IReactorContext context, string documentId, string path, MapValue val, MapPath failurePath)
     {
         var cts = new CancellationTokenSource();
-        _patches.Writer.TryWrite(new PatchIntent(context, id, path, val, failure, cts.Token));
+        _patches.Writer.TryWrite(new PatchIntent(context, documentId, path, val, failurePath, cts.Token));
         return cts;
     }
 
-    public CancellationTokenSource Delete(IReactorContext context, string id, string? vector, string failure)
+    public CancellationTokenSource Delete(IReactorContext context, string documentId, string? vector, MapPath failurePath)
     {
         var cts = new CancellationTokenSource();
-        _deletes.Writer.TryWrite(new DeleteIntent(context, id, vector, failure, cts.Token));
+        _deletes.Writer.TryWrite(new DeleteIntent(context, documentId, vector, failurePath, cts.Token));
         return cts;
     }
 
-    public CancellationTokenSource Increment(IReactorContext context, string id, string name, long delta, string failure)
+    public CancellationTokenSource Increment(IReactorContext context, string documentId, string name, long delta, MapPath failurePath)
     {
         var cts = new CancellationTokenSource();
-        _increments.Writer.TryWrite(new IncrementIntent(context, id, name, delta, failure, cts.Token));
+        _increments.Writer.TryWrite(new IncrementIntent(context, documentId, name, delta, failurePath, cts.Token));
         return cts;
     }
 
-    public CancellationTokenSource GetCounters(IReactorContext context, string id, string output, string failure)
+    public CancellationTokenSource GetCounters(IReactorContext context, string documentId, MapPath outputPath, MapPath failurePath)
     {
         var cts = new CancellationTokenSource();
-        _getCounters.Writer.TryWrite(new GetCountersIntent(context, id, output, failure, cts.Token));
+        _getCounters.Writer.TryWrite(new GetCountersIntent(context, documentId, outputPath, failurePath, cts.Token));
         return cts;
     }
 
-    public CancellationTokenSource GetAttachmentsMetadata(IReactorContext context, string id, string output, string failure)
+    public CancellationTokenSource GetAttachmentsMetadata(IReactorContext context, string documentId, MapPath outputPath, MapPath failurePath)
     {
         var cts = new CancellationTokenSource();
-        _getAttachmentsMetadata.Writer.TryWrite(new GetAttachmentsMetadataIntent(context, id, output, failure, cts.Token));
+        _getAttachmentsMetadata.Writer.TryWrite(new GetAttachmentsMetadataIntent(context, documentId, outputPath, failurePath, cts.Token));
         return cts;
     }
 
-    public CancellationTokenSource StoreAttachment(IReactorContext context, string id, string name, Stream stream, string contentType, string failure)
+    public CancellationTokenSource StoreAttachment(IReactorContext context, string documentId, string name, Stream stream, string contentType, MapPath failurePath)
     {
         var cts = new CancellationTokenSource();
-        _storeAttachments.Writer.TryWrite(new StoreAttachmentIntent(context, id, name, stream, contentType, failure, cts.Token));
+        _storeAttachments.Writer.TryWrite(new StoreAttachmentIntent(context, documentId, name, stream, contentType, failurePath, cts.Token));
         return cts;
     }
 
-    public CancellationTokenSource GetAttachment(IReactorContext context, string id, string name, string output, string failure)
+    public CancellationTokenSource GetAttachment(IReactorContext context, string documentId, string name, MapPath outputPath, MapPath failurePath)
     {
         var cts = new CancellationTokenSource();
-        _getAttachments.Writer.TryWrite(new GetAttachmentIntent(context, id, name, output, failure, cts.Token));
+        _getAttachments.Writer.TryWrite(new GetAttachmentIntent(context, documentId, name, outputPath, failurePath, cts.Token));
         return cts;
     }
 
-    public CancellationTokenSource DeleteAttachment(IReactorContext context, string id, string name, string failure)
+    public CancellationTokenSource DeleteAttachment(IReactorContext context, string documentId, string name, MapPath failurePath)
     {
         var cts = new CancellationTokenSource();
-        _deleteAttachments.Writer.TryWrite(new DeleteAttachmentIntent(context, id, name, failure, cts.Token));
+        _deleteAttachments.Writer.TryWrite(new DeleteAttachmentIntent(context, documentId, name, failurePath, cts.Token));
         return cts;
     }
 
-    public void ExecuteNative<T>(IReactorContext context, Func<T, Task> nativeAction) where T : class
+    public CancellationTokenSource ExecuteNative(IReactorContext context, Func<object, Task> nativeAction, MapPath failurePath)
     {
         var cts = new CancellationTokenSource();
-        _natives.Writer.TryWrite(new NativeIntent(context, nativeAction, cts.Token));
+        _natives.Writer.TryWrite(new NativeIntent(context, nativeAction, failurePath, cts.Token));
+        return cts;
     }
 
-    public CancellationTokenSource Subscription(IReactorContext context, string topic, string dataPath, string failure)
+    public CancellationTokenSource Subscription(IReactorContext context, string topic, string dataPath, MapPath failurePath)
     {
         var cts = new CancellationTokenSource();
-        _subscriptions.Writer.TryWrite(new SubscriptionIntent(context, topic, dataPath, failure, cts.Token));
+        _subscriptions.Writer.TryWrite(new SubscriptionIntent(context, topic, dataPath, failurePath, cts.Token));
         return cts;
     }
 }

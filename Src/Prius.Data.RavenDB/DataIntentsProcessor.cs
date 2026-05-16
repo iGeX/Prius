@@ -1,18 +1,18 @@
-using Raven.Client.Documents.Commands;
-using Raven.Client.Documents.Commands.Batches;
-using Raven.Client.Documents.Operations;
-using Sparrow.Json.Parsing;
+using System.Text;
 
 namespace Prius.Data.RavenDB;
 
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Raven.Client.Documents.Session;
+using Raven.Client.Documents.Commands;
+using Raven.Client.Documents.Commands.Batches;
+using Raven.Client.Documents.Operations;
+using Sparrow.Json;
 using Engine.Abstractions;
 using Core.Maps;
-using Raven.Client.Documents.Session;
-using Sparrow.Json;
-using Microsoft.Extensions.Logging;
 
 public sealed class DataIntentsProcessor(
     DocumentStoreHolder holder,
@@ -109,8 +109,8 @@ public sealed class DataIntentsProcessor(
     private static string GetFullIntentInfo(object intent) => intent switch
     {
         LoadIntent l => $"Load(Id={l.DocumentId}, Out={l.OutputPath})",
-        QueryIntent q => $"Query(Map={q.QueryMap.Serialize()})",
-        StoreIntent s => $"Store(Id={s.DocumentId}, Vector={s.ChangeVector}, Map={s.Map.Serialize()})",
+        QueryIntent q => $"Query(QueryMap={q.QueryMap.Serialize()})",
+        StoreIntent s => $"Store(Document={s.Document.Serialize()})",
         PatchIntent p => $"Patch(Id={p.DocumentId}, Path={p.Path}, Val={p.Value})",
         DeleteIntent d => $"Delete(Id={d.DocumentId}, Vector={d.ChangeVector})",
         IncrementIntent i => $"Increment(Id={i.DocumentId}, Name={i.CounterName}, Delta={i.Delta})",
@@ -119,7 +119,7 @@ public sealed class DataIntentsProcessor(
         StoreAttachmentIntent sa => $"StoreAttachment(Id={sa.DocumentId}, Name={sa.Name}, Type={sa.ContentType})",
         GetAttachmentIntent ga => $"GetAttachment(Id={ga.DocumentId}, Name={ga.Name}, Out={ga.OutputPath})",
         DeleteAttachmentIntent da => $"DeleteAttachment(Id={da.DocumentId}, Name={da.Name})",
-        NativeIntent n => $"Native(Action={n.Action.Method.Name})",
+        NativeIntent _ => "Native",
         SubscriptionIntent sub => $"Subscription(Topic={sub.TopicName}, Path={sub.SubscriptionPath})",
         _ => intent.GetType().Name
     };
@@ -171,6 +171,7 @@ public sealed class DataIntentsProcessor(
 
         i.Context.Put(i.OutputPath, result.AsMapValue());
     }
+    
     private async Task HandleLoad(LoadIntent i)
     {
         using var session = holder.Store.OpenAsyncSession(new SessionOptions { NoTracking = true });
@@ -196,37 +197,19 @@ public sealed class DataIntentsProcessor(
 
     private async Task HandleStore(StoreIntent i)
     {
-        using var stream = new MemoryStream();
-        i.Map.Serialize(stream);
-        stream.Seek(0, SeekOrigin.Begin);
-     
-        using var session = holder.Store.OpenAsyncSession();
-        using var blittableJson = await session.Advanced.Context.ReadForMemoryAsync(stream, i.DocumentId, i.Token);
-        
-        blittableJson.Modifications = new DynamicJsonValue
+        var id = i.Document.DeepGet("@metadata/@id");
+        if (id.IsEmpty)
         {
-            ["@metadata"] = new DynamicJsonValue
-            {
-                ["@collection"] = i"Users" // Укажите вашу коллекцию
-            }
-        };
-        
-        {
-            // 2. Обязательно добавляем метаданные (без имени коллекции RavenDB не поймет, куда класть документ)
-            
-
-            // Применяем модификации, чтобы получить финальный объект
-            using (var finalBlittable = session.Advanced.Context.ReadObject(blittableJson, docId))
-            {
-                // 3. Передаем в PutCommandData и деферим в сессию
-                var putCommand = new PutCommandData(docId, changeVector: null, finalBlittable);
-            
-                session.Advanced.Defer(putCommand);
-            }
+            var failureMap = DictionaryMap.New.With(
+                ("Message", "No @metadata/@id specified"), 
+                ("Type", "InvalidState"));
+            i.Context.Put(i.FailurePath, failureMap.AsMapValue());
+            return;
         }
-        var command = new PutCommandData(i.DocumentId, i.ChangeVector, 
-            await holder.Store.GetRequestExecutor().Serializer.CreateReader(json, null));
         
+        using var session = holder.Store.OpenAsyncSession();
+        
+        var command = new PutCommandData(id, null, i.Document.ToDynamicJson());
         session.Advanced.Defer(command);
         await session.SaveChangesAsync(i.Token);
     }
@@ -234,12 +217,59 @@ public sealed class DataIntentsProcessor(
     private async Task HandlePatch(PatchIntent i)
     {
         using var session = holder.Store.OpenAsyncSession();
-        //TODO: Сформировать скрипт который делает патч данных по адресу Path значением или мапой из Value, Path надо поменять на MapPath
-        var patch = new PatchRequest { Script = i.Path };
         
-        session.Advanced.Defer(new PatchCommandData(i.DocumentId, null, patch));
+        session.Advanced.Defer(new PatchCommandData(i.DocumentId, null, CreatePatchRequest(i.Path, i.Value)));
         await session.SaveChangesAsync(i.Token);
     }
+    
+    private static PatchRequest CreatePatchRequest(MapPath path, MapValue value)
+    {
+        var values = new Dictionary<string, object> 
+        { 
+            ["Val"] = value.Match<object>(
+                onEmpty: _ => null!,
+                onMap: map => map.ToDynamicJson(),
+                onValue: val => val
+            )
+        };
+
+        if (path.IsEmpty)
+        {
+            return new PatchRequest
+            {
+                Script = "Object.assign(this, args.Val);",
+                Values = values
+            };
+        }
+
+        var scriptBuilder = new StringBuilder();
+        var currentPath = new StringBuilder("this");
+        var remainingPath = path;
+
+        while (!remainingPath.IsEmpty)
+        {
+            var segment = remainingPath.Head;
+            remainingPath = remainingPath.Tail;
+
+            var escapedSegment = segment.Replace("'", "\\'");
+            currentPath.Append("['").Append(escapedSegment).Append("']");
+
+            if (!remainingPath.IsEmpty)
+            {
+                scriptBuilder.Append(currentPath).Append(" = ").Append(currentPath).Append(" || {}; ");
+                continue;
+            }
+
+            scriptBuilder.Append(currentPath).Append(" = args.Val;");
+        }
+
+        return new PatchRequest
+        {
+            Script = scriptBuilder.ToString(),
+            Values = values
+        };
+    }
+    
     private async Task HandleIncrement(IncrementIntent i)
     {
         using var session = holder.Store.OpenAsyncSession();
@@ -258,25 +288,34 @@ public sealed class DataIntentsProcessor(
 
         i.Context.Put(i.OutputPath, result.AsMapValue());
     }
-
+    
     private async Task HandleGetAttachmentsMetadata(GetAttachmentsMetadataIntent i)
     {
-        var command = new GetDocumentsCommand(
-            new[] { i.DocumentId }, 
-            includes: null, 
-            metadataOnly: true);
+        var command = new GetDocumentsCommand(holder.Store.Conventions, i.DocumentId, null, metadataOnly: true);
 
-        await holder.Store.GetRequestExecutor().ExecuteAsync(command, holder.Store.Context);
+        using var context = JsonOperationContext.ShortTermSingleUse();
+        await holder.Store.GetRequestExecutor().ExecuteAsync(command, context);
         
-        var doc = command.Result.Results[0];
-        if (doc is null || !doc.TryGet("@attachments", out BlittableJsonReaderObject attachments))
+        if (command.Result.Results is null || 
+                command.Result.Results.Length == 0 ||
+                command.Result.Results[0] is not BlittableJsonReaderObject doc ||
+                !doc.TryGet("@metadata", out BlittableJsonReaderObject metadata) || 
+                !metadata.TryGet("@attachments", out BlittableJsonReaderArray attachments))
+        {
+            i.Context.Put(i.OutputPath, new MapValue());
             return;
+        }
 
         var result = DictionaryMap.New;
-        foreach (var property in attachments.GetProperties())
+        
+        foreach (var obj in attachments)
         {
-            if (property.Value is BlittableJsonReaderObject attachment)
-                result.Put(property.Name, DictionaryMap.New.With(("Type", (MapValue)attachment.GetByString("ContentType")), ("Size", (MapValue)attachment.GetByString("Size"))).AsMapValue());
+            if (obj is not BlittableJsonReaderObject attachmentObj) 
+                continue;
+            if (!attachmentObj.TryGet("Name", out string name)) 
+                continue;
+
+            result.Put(name, new JsonReaderMap(new BlittableMemoryWrapper(attachmentObj).Memory));
         }
 
         i.Context.Put(i.OutputPath, result.AsMapValue());
@@ -291,12 +330,7 @@ public sealed class DataIntentsProcessor(
 
     private async Task HandleGetAttachment(GetAttachmentIntent i)
     {
-        using var session = holder.Store.OpenAsyncSession();
-        using var attachment = await session.Advanced.Attachments.GetAsync(i.DocumentId, i.Name);
-        
-        // В рамках Prius нам нужно вернуть поток в контекст интента или обработать его
-        // Предполагаем, что i.Context поддерживает прямую передачу стрима или мы сохраняем его локально
-        i.Context.Put(i.OutputPath, new MapValue(attachment.Stream));
+        //TODO
     }
 
     private async Task HandleDeleteAttachment(DeleteAttachmentIntent i)
@@ -308,5 +342,8 @@ public sealed class DataIntentsProcessor(
 
     private async Task HandleNative(NativeIntent i) => await i.Action(holder.Store);
     
-    private async Task HandleSubscription(SubscriptionIntent i) => await Task.CompletedTask;
+    private async Task HandleSubscription(SubscriptionIntent i)
+    {
+        //TODO
+    }
 }

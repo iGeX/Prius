@@ -46,7 +46,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Prius.Data.RavenDB", "Src\P
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".gemini", ".gemini", "{6953A7E4-8F9C-4ACE-8383-65E118837303}"
 	ProjectSection(SolutionItems) = preProject
-		.gemini\system.md = .gemini\system.md
+		.gemini\GEMINI.md = .gemini\GEMINI.md
 	EndProjectSection
 EndProject
 Global
