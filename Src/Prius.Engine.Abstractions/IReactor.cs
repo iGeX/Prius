@@ -7,4 +7,6 @@ public interface IReactor
     void Put(IReactorContext context, MapValue value);
     
     MapValue Get(IReactorContext context);
+    
+    void Notify(IReactorContext context, IMap changedKeys);
 }

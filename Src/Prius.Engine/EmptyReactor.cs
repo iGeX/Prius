@@ -11,4 +11,6 @@ public sealed class EmptyReactor : IReactor
     public void Put(IReactorContext context, MapValue value) { }
 
     public MapValue Get(IReactorContext context) => Empty.Instance;
+    
+    public void Notify(IReactorContext context, IMap changedKeys) { }
 }

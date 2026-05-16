@@ -1,13 +1,15 @@
+using Prius.Core.Maps;
+
 namespace Prius.Data.RavenDB;
 
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Prius.Engine.Abstractions;
+using Engine.Abstractions;
 
 using Microsoft.Extensions.Logging;
 
-public class DataIntentsProcessor
+public sealed class DataIntentsProcessor
 {
     private readonly DocumentStoreHolder _holder;
     private readonly IDataIntentsProvider _provider;
@@ -23,8 +25,7 @@ public class DataIntentsProcessor
         _logger = logger;
     }
 
-    public async Task StartAsync(CancellationToken ct)
-    {
+    public async Task StartAsync(CancellationToken ct) =>
         await Task.WhenAll(
             ProcessLoop(_provider.PopLoad, HandleLoad, ct),
             ProcessLoop(_provider.PopQuery, HandleQuery, ct),
@@ -40,27 +41,64 @@ public class DataIntentsProcessor
             ProcessLoop(_provider.PopNative, HandleNative, ct),
             ProcessLoop(_provider.PopSubscription, HandleSubscription, ct)
         );
-    }
 
     private async Task ProcessLoop<T>(Func<CancellationToken, ValueTask<T>> popFunc, Func<T, Task> handler, CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
         {
-            try
+            var intent = await popFunc(ct);
+            var retryCount = 0;
+            const int maxRetries = 3;
+
+            while (retryCount < maxRetries)
             {
-                var intent = await popFunc(ct);
-                await handler(intent);
-            }
-            catch (OperationCanceledException)
-            {
-                break;
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Error in intent processing loop for {IntentType}", typeof(T).Name);
+                try
+                {
+                    await handler(intent);
+                    break;
+                }
+                catch (OperationCanceledException)
+                {
+                    _logger.LogInformation("Intent {IntentInfo} was cancelled", GetIntentInfo(intent));
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    retryCount++;
+                    if (retryCount >= maxRetries)
+                    {
+                        _logger.LogError(ex, "Failed to process intent {IntentInfo} after {RetryCount} retries", GetIntentInfo(intent), maxRetries);
+                        RecordFailure(intent, ex);
+                        break;
+                    }
+
+                    var delay = TimeSpan.FromMilliseconds(Math.Pow(2, retryCount) * 100);
+                    await Task.Delay(delay, ct);
+                }
             }
         }
     }
+
+    private static void RecordFailure(object intent, Exception ex)
+    {
+        if (intent is not IIntent i)
+            return;
+
+        var failureMap = DictionaryMap.New.With(
+            ("Message", ex.Message), 
+            ("Type", ex.GetType().Name));
+        i.Context.Put(i.FailurePath, failureMap.ToMapValue());
+    }
+
+    private static string GetIntentInfo(object intent)
+    {
+        if (intent is LoadIntent l)
+            return $"Load({l.DocumentId})";
+        if (intent is QueryIntent q)
+            return $"Query({q.QueryMap.Get("From")})";
+        return intent.GetType().Name;
+    }
+
 
     private async Task HandleLoad(LoadIntent i)
     {
@@ -90,14 +128,19 @@ public class DataIntentsProcessor
             foreach (var param in parameters)
                 query.AddParameter(param.Key, param.Value);
 
-            var results = await query.ToListAsync();
+            var results = await query.ToListAsync(i.Token);
             _logger.LogInformation("Executed query against index {Index} returning {Count} results", i.QueryMap.Get("From"), results.Count);
+        }
+        catch (OperationCanceledException)
+        {
+            
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to execute query");
         }
     }
+
     private async Task HandleStore(StoreIntent i) => await Task.CompletedTask;
     private async Task HandlePatch(PatchIntent i) => await Task.CompletedTask;
     private async Task HandleDelete(DeleteIntent i) => await Task.CompletedTask;

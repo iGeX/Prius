@@ -38,17 +38,93 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
     public async ValueTask<NativeIntent> PopNative(CancellationToken ct) => await _natives.Reader.ReadAsync(ct);
     public async ValueTask<SubscriptionIntent> PopSubscription(CancellationToken ct) => await _subscriptions.Reader.ReadAsync(ct);
 
-    public void Load(string id, string output, string failure) => _loads.Writer.TryWrite(new LoadIntent(id, output, failure));
-    public void Query(IMap queryMap, string output, string failure) => _queries.Writer.TryWrite(new QueryIntent(queryMap, output, failure));
-    public void Store(string id, IMap map, string? vector, string failure) => _stores.Writer.TryWrite(new StoreIntent(id, map, vector, failure));
-    public void Patch(string id, string path, MapValue val, string failure) => _patches.Writer.TryWrite(new PatchIntent(id, path, val, failure));
-    public void Delete(string id, string? vector, string failure) => _deletes.Writer.TryWrite(new DeleteIntent(id, vector, failure));
-    public void Increment(string id, string name, long delta, string failure) => _increments.Writer.TryWrite(new IncrementIntent(id, name, delta, failure));
-    public void GetCounters(string id, string output, string failure) => _getCounters.Writer.TryWrite(new GetCountersIntent(id, output, failure));
-    public void GetAttachmentsMetadata(string id, string output, string failure) => _getAttachmentsMetadata.Writer.TryWrite(new GetAttachmentsMetadataIntent(id, output, failure));
-    public void StoreAttachment(string id, string name, Stream stream, string contentType, string failure) => _storeAttachments.Writer.TryWrite(new StoreAttachmentIntent(id, name, stream, contentType, failure));
-    public void GetAttachment(string id, string name, string output, string failure) => _getAttachments.Writer.TryWrite(new GetAttachmentIntent(id, name, output, failure));
-    public void DeleteAttachment(string id, string name, string failure) => _deleteAttachments.Writer.TryWrite(new DeleteAttachmentIntent(id, name, failure));
-    public void ExecuteNative<T>(Func<T, Task> nativeAction) where T : class => _natives.Writer.TryWrite(new NativeIntent(nativeAction));
-    public void Subscription(string topic, string dataPath, string failure) => _subscriptions.Writer.TryWrite(new SubscriptionIntent(topic, dataPath, failure));
+    public CancellationTokenSource Load(IReactorContext context, string id, string output, string failure)
+    {
+        var cts = new CancellationTokenSource();
+        _loads.Writer.TryWrite(new LoadIntent(context, id, output, failure, cts.Token));
+        return cts;
+    }
+
+    public CancellationTokenSource Query(IReactorContext context, IMap queryMap, string output, string failure)
+    {
+        var cts = new CancellationTokenSource();
+        _queries.Writer.TryWrite(new QueryIntent(context, queryMap, output, failure, cts.Token));
+        return cts;
+    }
+
+    public CancellationTokenSource Store(IReactorContext context, string id, IMap map, string? vector, string failure)
+    {
+        var cts = new CancellationTokenSource();
+        _stores.Writer.TryWrite(new StoreIntent(context, id, map, vector, failure, cts.Token));
+        return cts;
+    }
+
+    public CancellationTokenSource Patch(IReactorContext context, string id, string path, MapValue val, string failure)
+    {
+        var cts = new CancellationTokenSource();
+        _patches.Writer.TryWrite(new PatchIntent(context, id, path, val, failure, cts.Token));
+        return cts;
+    }
+
+    public CancellationTokenSource Delete(IReactorContext context, string id, string? vector, string failure)
+    {
+        var cts = new CancellationTokenSource();
+        _deletes.Writer.TryWrite(new DeleteIntent(context, id, vector, failure, cts.Token));
+        return cts;
+    }
+
+    public CancellationTokenSource Increment(IReactorContext context, string id, string name, long delta, string failure)
+    {
+        var cts = new CancellationTokenSource();
+        _increments.Writer.TryWrite(new IncrementIntent(context, id, name, delta, failure, cts.Token));
+        return cts;
+    }
+
+    public CancellationTokenSource GetCounters(IReactorContext context, string id, string output, string failure)
+    {
+        var cts = new CancellationTokenSource();
+        _getCounters.Writer.TryWrite(new GetCountersIntent(context, id, output, failure, cts.Token));
+        return cts;
+    }
+
+    public CancellationTokenSource GetAttachmentsMetadata(IReactorContext context, string id, string output, string failure)
+    {
+        var cts = new CancellationTokenSource();
+        _getAttachmentsMetadata.Writer.TryWrite(new GetAttachmentsMetadataIntent(context, id, output, failure, cts.Token));
+        return cts;
+    }
+
+    public CancellationTokenSource StoreAttachment(IReactorContext context, string id, string name, Stream stream, string contentType, string failure)
+    {
+        var cts = new CancellationTokenSource();
+        _storeAttachments.Writer.TryWrite(new StoreAttachmentIntent(context, id, name, stream, contentType, failure, cts.Token));
+        return cts;
+    }
+
+    public CancellationTokenSource GetAttachment(IReactorContext context, string id, string name, string output, string failure)
+    {
+        var cts = new CancellationTokenSource();
+        _getAttachments.Writer.TryWrite(new GetAttachmentIntent(context, id, name, output, failure, cts.Token));
+        return cts;
+    }
+
+    public CancellationTokenSource DeleteAttachment(IReactorContext context, string id, string name, string failure)
+    {
+        var cts = new CancellationTokenSource();
+        _deleteAttachments.Writer.TryWrite(new DeleteAttachmentIntent(context, id, name, failure, cts.Token));
+        return cts;
+    }
+
+    public void ExecuteNative<T>(IReactorContext context, Func<T, Task> nativeAction) where T : class
+    {
+        var cts = new CancellationTokenSource();
+        _natives.Writer.TryWrite(new NativeIntent(context, nativeAction, cts.Token));
+    }
+
+    public CancellationTokenSource Subscription(IReactorContext context, string topic, string dataPath, string failure)
+    {
+        var cts = new CancellationTokenSource();
+        _subscriptions.Writer.TryWrite(new SubscriptionIntent(context, topic, dataPath, failure, cts.Token));
+        return cts;
+    }
 }

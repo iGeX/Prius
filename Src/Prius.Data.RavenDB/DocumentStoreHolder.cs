@@ -5,11 +5,11 @@ using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
 using Raven.Client.Documents;
 
-public class DocumentStoreHolder : IDisposable
+public sealed class DocumentStoreHolder : IDisposable
 {
     private readonly Lock _sync = new();
     private readonly ILogger<DocumentStoreHolder> _logger;
-    private IDocumentStore _store;
+    private IDocumentStore? _store;
 
     public DocumentStoreHolder(
         string[] urls, 
@@ -27,7 +27,7 @@ public class DocumentStoreHolder : IDisposable
         get 
         { 
             lock (_sync) 
-                return _store; 
+                return _store ?? throw new ObjectDisposedException(nameof(Store)); 
         } 
     }
 
@@ -73,8 +73,6 @@ public class DocumentStoreHolder : IDisposable
     public void Dispose()
     {
         lock (_sync)
-        {
             _store?.Dispose();
-        }
     }
 }
