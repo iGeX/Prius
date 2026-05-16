@@ -1,12 +1,12 @@
-using Prius.Core.Maps;
-
 namespace Prius.Data.RavenDB;
 
 using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Engine.Abstractions;
-
+using Core.Maps;
+using Raven.Client.Documents.Session;
+using Sparrow.Json;
 using Microsoft.Extensions.Logging;
 
 public sealed class DataIntentsProcessor
@@ -116,43 +116,47 @@ public sealed class DataIntentsProcessor
 
     private async Task HandleLoad(LoadIntent i)
     {
-        try
-        {
-            using var session = _holder.Store.OpenAsyncSession();
-            var document = await session.LoadAsync<object>(i.DocumentId);
-            _logger.LogInformation("Loaded document: {DocumentId}", i.DocumentId);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to load document: {DocumentId}", i.DocumentId);
-            throw;
-        }
+        using var session = _holder.Store.OpenAsyncSession();
+        var document = await session.LoadAsync<object>(i.DocumentId, i.Token);
+        _logger.LogInformation("Loaded document: {DocumentId}", i.DocumentId);
     }
     
     private async Task HandleQuery(QueryIntent i)
     {
-        try
-        {
-            var (rql, parameters) = RqlBuilder.Build(i.QueryMap);
-            if (string.IsNullOrEmpty(rql))
-                return;
+        var (rql, parameters) = RqlBuilder.Build(i.QueryMap);
+        if (string.IsNullOrEmpty(rql))
+            return;
 
-            using var session = _holder.Store.OpenAsyncSession();
-            var query = session.Advanced.AsyncRawQuery<object>(rql);
+        using var session = _holder.Store.OpenAsyncSession(new SessionOptions { NoTracking = true });
+        var query = session.Advanced.AsyncRawQuery<BlittableJsonReaderObject>(rql);
+
+        foreach (var pair in parameters)
+            query.AddParameter(pair.Key, pair.Value);
+
+        var results = await query.ToListAsync(i.Token);
+
+        var items = DictionaryMap.New;
+        var order = DictionaryMap.New;
+
+        for (var idx = 0; idx < results.Count; idx++)
+        {
+            var doc = results[idx];
+            if (!doc.TryGet("@metadata", out Sparrow.Json.BlittableJsonReaderObject metadata) || !metadata.TryGet("@id", out string id)) 
+                continue;
             
-            foreach (var param in parameters)
-                query.AddParameter(param.Key, param.Value);
+            var wrapper = new BlittableMemoryWrapper(doc);
+            items.Put(id, new JsonReaderMap(wrapper.Memory).AsMapValue());
+            order.Put(idx.ToIndexString(), new MapValue(id));
+        }
 
-            var results = await query.ToListAsync(i.Token);
-            _logger.LogInformation("Executed query against index {Index} returning {Count} results", i.QueryMap.Get("From"), results.Count);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to execute query");
-            throw;
-        }
+        var result = DictionaryMap.New.With(
+            ("Items", items.AsMapValue()),
+            ("Includes", DictionaryMap.New.AsMapValue()), 
+            ("Order", order.AsMapValue())
+        );
+
+        i.Context.Put(i.OutputPath, result.AsMapValue());
     }
-
     private async Task HandleStore(StoreIntent i) => await Task.CompletedTask;
     private async Task HandlePatch(PatchIntent i) => await Task.CompletedTask;
     private async Task HandleDelete(DeleteIntent i) => await Task.CompletedTask;

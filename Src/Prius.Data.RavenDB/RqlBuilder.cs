@@ -115,13 +115,12 @@ public static class RqlBuilder
         }
     }
 
+    private const int DefaultLimit = 1024;
+
     private static void BuildLimit(StringBuilder sb, MapValue skipVal, MapValue takeVal)
     {
-        if (skipVal.IsEmpty && takeVal.IsEmpty)
-            return;
-
         var skip = skipVal.IsEmpty ? 0 : skipVal.AsInt();
-        var take = takeVal.IsEmpty ? int.MaxValue : takeVal.AsInt();
+        var take = takeVal.IsEmpty ? DefaultLimit : takeVal.AsInt();
         sb.Append($"limit {skip}, {take}");
     }
 
