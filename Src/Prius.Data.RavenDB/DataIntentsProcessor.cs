@@ -62,10 +62,10 @@ public sealed class DataIntentsProcessor(
                     }
                     catch (Exception ex) when (IsFatal(ex))
                     {
-                        if (intent is not null)
+                        if (intent is IIntent ii)
                         {
                             logger.LogError(ex, "Fatal error processing intent {IntentInfo}", GetFullIntentInfo(intent));
-                            RecordFailure(intent, ex);
+                            ReportFailure(ii, ex);
                         }
                         break;
                     }
@@ -74,7 +74,7 @@ public sealed class DataIntentsProcessor(
                         retryCount++;
                         if (retryCount >= MaxRetries)
                         {
-                            if (intent is not null)
+                            if (intent is IIntent ii)
                             {
                                 if (logger.IsEnabled(LogLevel.Debug))
                                 {
@@ -82,7 +82,7 @@ public sealed class DataIntentsProcessor(
                                         GetFullIntentInfo(intent), MaxRetries);
                                 }
 
-                                RecordFailure(intent, ex);
+                                ReportFailure(ii, ex);
                             }
 
                             break;
@@ -111,32 +111,33 @@ public sealed class DataIntentsProcessor(
 
     private static string GetFullIntentInfo(object intent) => intent switch
     {
-        LoadIntent l => $"Load(Id={l.DocumentId}, Out={l.OutputPath})",
+        LoadIntent l => $"Load(Id={l.DocumentId}, Out={l.SuccessPath})",
         QueryIntent q => $"Query(QueryMap={q.QueryMap.Serialize()})",
         StoreIntent s => $"Store(Document={s.Document.Serialize()})",
         PatchIntent p => $"Patch(Id={p.DocumentId}, Path={p.Path}, Val={p.Value})",
         DeleteIntent d => $"Delete(Id={d.DocumentId}, Vector={d.ChangeVector})",
         IncrementIntent i => $"Increment(Id={i.DocumentId}, Name={i.CounterName}, Delta={i.Delta})",
-        GetCountersIntent gc => $"GetCounters(Id={gc.DocumentId}, Out={gc.OutputPath})",
-        GetAttachmentsMetadataIntent gam => $"GetAttachmentsMetadata(Id={gam.DocumentId}, Out={gam.OutputPath})",
+        GetCountersIntent gc => $"GetCounters(Id={gc.DocumentId}, Out={gc.SuccessPath})",
+        GetAttachmentsMetadataIntent gam => $"GetAttachmentsMetadata(Id={gam.DocumentId}, Out={gam.SuccessPath})",
         StoreAttachmentIntent sa => $"StoreAttachment(Id={sa.DocumentId}, Name={sa.Name}, Type={sa.ContentType})",
-        GetAttachmentIntent ga => $"GetAttachment(Id={ga.DocumentId}, Name={ga.Name}, Out={ga.OutputPath})",
+        GetAttachmentIntent ga => $"GetAttachment(Id={ga.DocumentId}, Name={ga.Name}, Out={ga.SuccessPath})",
         DeleteAttachmentIntent da => $"DeleteAttachment(Id={da.DocumentId}, Name={da.Name})",
         NativeIntent _ => "Native",
         SubscriptionIntent sub => $"Subscription(Topic={sub.TopicName}, Path={sub.SubscriptionPath})",
         _ => intent.GetType().Name
     };
-
-    private static void RecordFailure(object intent, Exception ex)
+    
+    private static void ReportSuccess(IIntent i, MapValue value) => i.Context.Put(i.SuccessPath, value);
+    
+    private static void ReportFailure(IIntent i, string message, string type)
     {
-        if (intent is not IIntent i)
-            return;
-
         var failureMap = DictionaryMap.New.With(
-            ("Message", ex.Message), 
-            ("Type", ex.GetType().Name));
+            ("Message", message), 
+            ("Type", type));
         i.Context.Put(i.FailurePath, failureMap.AsMapValue());
     }
+
+    private static void ReportFailure(IIntent i, Exception ex) => ReportFailure(i, ex.Message, ex.GetType().Name);
     
     private async Task HandleQuery(QueryIntent i)
     {
@@ -171,7 +172,7 @@ public sealed class DataIntentsProcessor(
             ("Order", order.AsMapValue())
         );
 
-        i.Context.Put(i.OutputPath, result.AsMapValue());
+        i.Context.Put(i.SuccessPath, result.AsMapValue());
     }
     
     private async Task HandleLoad(LoadIntent i)
@@ -186,7 +187,7 @@ public sealed class DataIntentsProcessor(
         }
 
         var map = await doc.AsJsonReaderMap();
-        i.Context.Put(i.OutputPath, map.AsMapValue());
+        i.Context.Put(i.SuccessPath, map.AsMapValue());
     }
 
     private async Task HandleDelete(DeleteIntent i)
@@ -227,14 +228,8 @@ public sealed class DataIntentsProcessor(
         
         if(logger.IsEnabled(LogLevel.Debug))
             logger.LogDebug("Successfully saved document with ID: {Id}", id.AsString());
-    }
-
-    private static void ReportFailure(IIntent i, string message, string type)
-    {
-        var failureMap = DictionaryMap.New.With(
-            ("Message", message), 
-            ("Type", type));
-        i.Context.Put(i.FailurePath, failureMap.AsMapValue());
+        
+        ReportSuccess(i, true);
     }
 
     private async Task HandlePatch(PatchIntent i)
@@ -309,7 +304,7 @@ public sealed class DataIntentsProcessor(
         foreach (var counter in counters)
             result.Put(counter.Key, counter.Value.AsMapValue());
 
-        i.Context.Put(i.OutputPath, result.AsMapValue());
+        ReportSuccess(i, result.AsMapValue());
     }
     
     private async Task HandleGetAttachmentsMetadata(GetAttachmentsMetadataIntent i)
@@ -325,12 +320,11 @@ public sealed class DataIntentsProcessor(
                 !doc.TryGet("@metadata", out BlittableJsonReaderObject metadata) || 
                 !metadata.TryGet("@attachments", out BlittableJsonReaderArray attachments))
         {
-            i.Context.Put(i.OutputPath, new MapValue());
+            ReportSuccess(i, new MapValue());
             return;
         }
 
         var result = DictionaryMap.New;
-        
         foreach (var obj in attachments)
         {
             if (obj is not BlittableJsonReaderObject attachmentObj) 
@@ -341,7 +335,7 @@ public sealed class DataIntentsProcessor(
             result.Put(name, (await attachmentObj.AsJsonReaderMap()).AsMapValue());
         }
 
-        i.Context.Put(i.OutputPath, result.AsMapValue());
+        ReportSuccess(i, result.AsMapValue());
     }
 
     private async Task HandleStoreAttachment(StoreAttachmentIntent i)
@@ -363,7 +357,7 @@ public sealed class DataIntentsProcessor(
         await session.SaveChangesAsync(i.Token);
     }
 
-    private async Task HandleNative(NativeIntent i) => await i.Action(holder.Store);
+    private async Task HandleNative(NativeIntent i) => await i.Action(holder.Store, i);
     
     private async Task HandleSubscription(SubscriptionIntent i)
     {

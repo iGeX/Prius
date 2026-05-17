@@ -4,6 +4,8 @@ public interface IIntent
 {
     IReactorContext Context { get; }
     
+    string SuccessPath { get; }
+    
     string FailurePath { get; }
     
     CancellationToken Token { get; }

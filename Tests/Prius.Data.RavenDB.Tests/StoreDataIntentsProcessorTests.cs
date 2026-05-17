@@ -12,10 +12,11 @@ public class StoreDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
     {
         const string DocId = "users/1";
         const string Collection = "users";
-        
+
+        var context = new MockReactorContext();
         var provider = new MockDataIntentsProvider
         {
-            Stores = [new StoreIntent(new MockReactorContext(), DictionaryMap.New
+            Stores = [new StoreIntent(context, DictionaryMap.New
                 .With("Name", "John")
                 .With("Age", 30)
                 .With("Address", DictionaryMap.New
@@ -23,12 +24,14 @@ public class StoreDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
                     .With("Zip", 123456))
                 .With("@metadata", DictionaryMap.New
                     .With("@id", DocId)
-                    .With("@collection", Collection)), "failures", TestContext.Current.CancellationToken)]
+                    .With("@collection", Collection)), "success", "failures", TestContext.Current.CancellationToken)]
         };
         
         using var store = GetDocumentStore();
         await ExecuteTest(store, provider, async () =>
         {
+            Assert.True(context.PutCalls.ContainsKey("success"));
+            
             using var session = store.OpenAsyncSession();
             var doc = await session.LoadAsync<JObject>(DocId, TestContext.Current.CancellationToken);
             Assert.NotNull(doc);
@@ -55,12 +58,13 @@ public class StoreDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         var provider = new MockDataIntentsProvider
         {
             Stores = [new StoreIntent(context, DictionaryMap.New
-                .With("Name", "John"), "failures/1", TestContext.Current.CancellationToken)]
+                .With("Name", "John"), "success/1","failures/1", TestContext.Current.CancellationToken)]
         };
 
         using var store = GetDocumentStore();
         await ExecuteTest(store, provider, () =>
         {
+            Assert.False(context.PutCalls.ContainsKey("success/1"));
             Assert.True(context.PutCalls.ContainsKey("failures/1"));
             Assert.Equal("No @metadata/@id specified", context.PutCalls["failures/1"].AsMap().Get("Message").AsString());
             return Task.CompletedTask;
@@ -89,15 +93,17 @@ public class StoreDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         var provider = new MockDataIntentsProvider
         {
             Stores = [
-                new StoreIntent(context, DictionaryMap.New.With("@metadata", DictionaryMap.New.With("@id", DocId).With("@collection", "users").With("@change-vector", existingVector)), "failures/1", TestContext.Current.CancellationToken),
-                new StoreIntent(context, DictionaryMap.New.With("@metadata", DictionaryMap.New.With("@id", DocId).With("@collection", "users").With("@change-vector", "Vector2")), "failures/2", TestContext.Current.CancellationToken)
+                new StoreIntent(context, DictionaryMap.New.With("@metadata", DictionaryMap.New.With("@id", DocId).With("@collection", "users").With("@change-vector", existingVector)), "success/1","failures/1", TestContext.Current.CancellationToken),
+                new StoreIntent(context, DictionaryMap.New.With("@metadata", DictionaryMap.New.With("@id", DocId).With("@collection", "users").With("@change-vector", "Vector2")), "success/2", "failures/2", TestContext.Current.CancellationToken)
             ]
         };
 
         await ExecuteTest(store, provider, () =>
         {
+            Assert.True(context.PutCalls.ContainsKey("success/1"));
             Assert.False(context.PutCalls.ContainsKey("failures/1"));
             Assert.True(context.PutCalls.ContainsKey("failures/2"));
+            Assert.False(context.PutCalls.ContainsKey("success/2"));
             return Task.CompletedTask;
         });
     }
@@ -105,22 +111,26 @@ public class StoreDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
     [Fact]
     public async Task ShouldHandleDateTimeFields()
     {
-        var docId = "docs/1";
+        const string DocId = "docs/1";
+        
         var now = DateTime.UtcNow;
+        var context = new MockReactorContext();
         var provider = new MockDataIntentsProvider
         {
-            Stores = [new StoreIntent(new MockReactorContext(), DictionaryMap.New
+            Stores = [new StoreIntent(context, DictionaryMap.New
                 .With("CreatedAt", now.ToString("O"))
                 .With("@metadata", DictionaryMap.New
-                    .With("@id", docId)
-                    .With("@collection", "docs")), "failures", TestContext.Current.CancellationToken)]
+                    .With("@id", DocId)
+                    .With("@collection", "docs")), "success", "failures", TestContext.Current.CancellationToken)]
         };
 
         using var store = GetDocumentStore();
         await ExecuteTest(store, provider, async () =>
         {
+            Assert.True(context.PutCalls.ContainsKey("success"));
+            
             using var session = store.OpenAsyncSession();
-            var doc = await session.LoadAsync<JObject>(docId, TestContext.Current.CancellationToken);
+            var doc = await session.LoadAsync<JObject>(DocId, TestContext.Current.CancellationToken);
             Assert.Equal(now.ToString("O"), doc!["CreatedAt"]?.ToString());
         });
     }
@@ -128,22 +138,26 @@ public class StoreDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
     [Fact]
     public async Task ShouldHandleExpirationMetadata()
     {
-        var docId = "docs/ttl";
+        const string DocId = "docs/ttl";
+        
         var expires = DateTime.UtcNow.AddMinutes(5);
+        var context = new MockReactorContext();
         var provider = new MockDataIntentsProvider
         {
-            Stores = [new StoreIntent(new MockReactorContext(), DictionaryMap.New
+            Stores = [new StoreIntent(context, DictionaryMap.New
                 .With("@metadata", DictionaryMap.New
-                    .With("@id", docId)
+                    .With("@id", DocId)
                     .With("@collection", "docs")
-                    .With("@expires", expires.ToString("O"))), "failures", TestContext.Current.CancellationToken)]
+                    .With("@expires", expires.ToString("O"))), "success", "failures", TestContext.Current.CancellationToken)]
         };
 
         using var store = GetDocumentStore();
         await ExecuteTest(store, provider, async () =>
         {
+            Assert.True(context.PutCalls.ContainsKey("success"));
+            
             using var session = store.OpenAsyncSession();
-            var metadata = session.Advanced.GetMetadataFor(await session.LoadAsync<dynamic>(docId));
+            var metadata = session.Advanced.GetMetadataFor(await session.LoadAsync<dynamic>(DocId));
             Assert.Equal(expires.ToString("O"), metadata.GetString("@expires"));
         });
     }
