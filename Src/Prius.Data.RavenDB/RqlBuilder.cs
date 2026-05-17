@@ -28,8 +28,13 @@ public static class RqlBuilder
         BuildGroupBy(sb, queryMap.Get("GroupBy").AsMap());
         BuildOrderBy(sb, queryMap.Get("OrderBy").AsMap());
         
-        // Передаем Facets и GroupBy в BuildSelect, чтобы корректно собрать секцию select без дублирования токенов
-        BuildSelect(sb, queryMap.Get("Select"), queryMap.Get("Reduce").AsMap(), queryMap.Get("Facets").AsMap(), queryMap.Get("GroupBy").AsMap());
+        BuildSelect(
+            sb, 
+            queryMap.Get("Select"), 
+            queryMap.Get("Reduce").AsMap(), 
+            queryMap.Get("Facets").AsMap(), 
+            queryMap.Get("GroupBy").AsMap()
+        );
         
         BuildLimit(sb, queryMap.Get("Skip"), queryMap.Get("Take"), parameters);
 
@@ -38,19 +43,23 @@ public static class RqlBuilder
     
     private static void BuildFrom(StringBuilder sb, MapValue fromVal, IMap tsMap)
     {
+        var escapedFrom = fromVal.AsString().Replace("'", "''");
+
         if (tsMap.IsEmpty)
         {
             sb.Append("from index '");
-            sb.Append(fromVal.AsString());
+            sb.Append(escapedFrom);
             sb.Append("' ");
             return;
         }
 
+        var escapedTsName = tsMap.Get("Name").AsString().Replace("'", "''");
+
         sb.Append("from index '");
-        sb.Append(fromVal.AsString());
-        sb.Append("' timeseries(");
-        sb.Append(tsMap.Get("Name").AsString());
-        sb.Append(") ");
+        sb.Append(escapedFrom);
+        sb.Append("' timeseries('");
+        sb.Append(escapedTsName);
+        sb.Append("') ");
     }
     
     private static void BuildWhereAndSpatial(StringBuilder sb, IMap queryMap, Dictionary<string, object> parameters)
@@ -88,14 +97,15 @@ public static class RqlBuilder
 
         var circle = spatialMap.Get("$within").AsMap().Get("Circle").AsMap();
         
+        // Переведено с double на decimal
         var pLat = "p" + parameters.Count.ToIndexString();
-        parameters.Add(pLat, circle.Get("Latitude").AsValue<double>());
+        parameters.Add(pLat, circle.Get("Latitude").AsValue<decimal>());
         
         var pLng = "p" + parameters.Count.ToIndexString();
-        parameters.Add(pLng, circle.Get("Longitude").AsValue<double>());
+        parameters.Add(pLng, circle.Get("Longitude").AsValue<decimal>());
         
         var pRad = "p" + parameters.Count.ToIndexString();
-        parameters.Add(pRad, circle.Get("Radius").AsValue<double>());
+        parameters.Add(pRad, circle.Get("Radius").AsValue<decimal>());
 
         sb.Append($"spatial.within({field}, spatial.circle(${pLat}, ${pLng}, ${pRad}))");
     }
@@ -239,10 +249,17 @@ public static class RqlBuilder
                     break;
                 case "$in":
                 case "$all":
+                    var keys = val.AsMap().Keys().ToList();
+                    if (keys.Count == 0)
+                    {
+                        sb.Append("id() == null");
+                        break;
+                    }
+
                     sb.Append(field);
                     sb.Append(opKey == "$in" ? " in (" : " all in (");
                     var first = true;
-                    foreach (var itemKey in val.AsMap().Keys())
+                    foreach (var itemKey in keys)
                     {
                         if (!first)
                             sb.Append(", ");
@@ -271,7 +288,9 @@ public static class RqlBuilder
                     if (!boost.IsEmpty)
                     {
                         sb.Append(" boost ");
-                        sb.Append(boost.AsValue<double>().ToString(System.Globalization.CultureInfo.InvariantCulture));
+                        // Полностью переведено на decimal, извлекаем честный 2.5M
+                        var boostValue = boost.AsValue<decimal>();
+                        sb.Append(boostValue.ToString(System.Globalization.CultureInfo.InvariantCulture));
                     }
                     break;
             }
@@ -325,35 +344,34 @@ public static class RqlBuilder
 
     private static void BuildSelect(StringBuilder sb, MapValue selectVal, IMap reduceMap, IMap facetsMap, IMap groupByMap)
     {
-        // 1. Агрегации Facets для RavenDB строятся через ключевое слово facet() в select
-        // Сохраняем исходное поведение: если GroupBy не пустой, блок Facets игнорируется
+        if (selectVal.IsEmpty && reduceMap.IsEmpty && facetsMap.IsEmpty)
+        {
+            return;
+        }
+
         if (groupByMap.IsEmpty && !facetsMap.IsEmpty)
         {
             sb.Append("select ");
             var first = true;
             foreach (var key in facetsMap.Keys())
             {
-                if (!first)
-                    sb.Append(", ");
+                if (!first) sb.Append(", ");
                 first = false;
 
                 var facetMap = facetsMap.Get(key).AsMap();
                 var field = NormalizePath(facetMap.Get("Field").AsString());
                 
-                // Фаллбэк на случай, если поле внутри объекта не задано явно
                 if (string.IsNullOrEmpty(field))
                 {
                     field = NormalizePath(key).Replace("Count", "").Replace("Sum", "");
                 }
 
-                // Генерирует нативный синтаксис RavenDB RQL: select facet(Age)
                 sb.Append($"facet({field})");
             }
             sb.Append(' ');
             return; 
         }
 
-        // 2. Стандартный токен select для проекций, если фасетов нет
         sb.Append("select ");
 
         if (selectVal.IsMap && !selectVal.AsMap().Get("$js").IsEmpty)
@@ -367,11 +385,15 @@ public static class RqlBuilder
 
         if (!reduceMap.IsEmpty)
         {
+            if (groupByMap.IsEmpty)
+            {
+                throw new InvalidOperationException("Map-Reduce aggregations (Reduce) require a GroupBy clause in RavenDB RQL.");
+            }
+
             var first = true;
             foreach (var key in reduceMap.Keys())
             {
-                if (!first)
-                    sb.Append(", ");
+                if (!first) sb.Append(", ");
                 first = false;
                 
                 var funcMap = reduceMap.Get(key).AsMap();
@@ -397,15 +419,16 @@ public static class RqlBuilder
         var first1 = true;
         foreach (var key in map.Keys())
         {
-            if (!first1)
-                sb.Append(", ");
+            if (!first1) sb.Append(", ");
             first1 = false;
 
             var value = map.Get(key);
+            var escapedAlias = $"'{key.Replace("'", "''")}'";
+
             sb
                 .Append(NormalizePath(!value.IsString ? key : value.AsString()))
                 .Append(" as ")
-                .Append(key)
+                .Append(escapedAlias)
                 .Append(' ');
         }
         sb.Append(' ');
@@ -413,15 +436,17 @@ public static class RqlBuilder
 
     private static void BuildReduceFunction(StringBuilder sb, string alias, IMap funcMap)
     {
+        var escapedAlias = $"'{alias.Replace("'", "''")}'";
+
         foreach (var opKey in funcMap.Keys())
         {
             var field = NormalizePath(funcMap.Get(opKey).AsString());
             var segment = opKey switch
             {
-                "$sum" => $"sum({field}) as {alias}",
-                "$avg" => $"avg({field}) as {alias}",
-                "$min" => $"min({field}) as {alias}",
-                "$max" => $"max({field}) as {alias}",
+                "$sum" => $"sum({field}) as {escapedAlias}",
+                "$avg" => $"avg({field}) as {escapedAlias}",
+                "$min" => $"min({field}) as {escapedAlias}",
+                "$max" => $"max({field}) as {escapedAlias}",
                 _ => null
             };
             
@@ -432,15 +457,21 @@ public static class RqlBuilder
 
     private static string NormalizePath(string path)
     {
+        if (string.IsNullOrEmpty(path))
+            return string.Empty;
+
         var mapPath = new MapPath(path);
         var sb = new StringBuilder();
         
         var head = mapPath.Head;
         while (!string.IsNullOrEmpty(head))
         {
-            if (sb.Length > 0)
+            if (sb.Length > 0) 
                 sb.Append('.');
-            sb.Append(head);
+                
+            sb.Append('\'');
+            sb.Append(head.Replace("'", "''"));
+            sb.Append('\'');
 
             mapPath = mapPath.Tail;
             head = mapPath.Head;
