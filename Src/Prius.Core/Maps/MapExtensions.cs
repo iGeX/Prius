@@ -491,6 +491,9 @@ public static class MapExtensions
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static IMap AsReadOnly(this IMap map) => new ReadOnlyMap(map);
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool ContainsKey(this IMap map, string key) => map.Keys().Any(k => string.Equals(k, key, StringComparison.Ordinal));
 
     public static MapValue DeepGet(this IMap map, MapPath path)
     {

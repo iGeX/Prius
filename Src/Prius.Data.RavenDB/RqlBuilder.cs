@@ -8,6 +8,8 @@ using Core.Maps;
 
 public static class RqlBuilder
 {
+    private const int DefaultLimit = 1024;
+
     public static (string Rql, Dictionary<string, object> Parameters) Build(IMap? queryMap)
     {
         if (queryMap == null || queryMap.IsEmpty)
@@ -23,9 +25,12 @@ public static class RqlBuilder
         BuildFrom(sb, fromVal, queryMap.Get("TimeSeries").AsMap());
         BuildInclude(sb, queryMap.Get("Include").AsMap());
         BuildWhereAndSpatial(sb, queryMap, parameters);
-        BuildGroupByAndFacets(sb, queryMap);
+        BuildGroupBy(sb, queryMap.Get("GroupBy").AsMap());
         BuildOrderBy(sb, queryMap.Get("OrderBy").AsMap());
-        BuildSelect(sb, queryMap.Get("Select"), queryMap.Get("Reduce").AsMap());
+        
+        // Передаем Facets и GroupBy в BuildSelect, чтобы корректно собрать секцию select без дублирования токенов
+        BuildSelect(sb, queryMap.Get("Select"), queryMap.Get("Reduce").AsMap(), queryMap.Get("Facets").AsMap(), queryMap.Get("GroupBy").AsMap());
+        
         BuildLimit(sb, queryMap.Get("Skip"), queryMap.Get("Take"), parameters);
 
         return (sb.ToString().TrimEnd(), parameters);
@@ -95,47 +100,22 @@ public static class RqlBuilder
         sb.Append($"spatial.within({field}, spatial.circle(${pLat}, ${pLng}, ${pRad}))");
     }
 
-    private static void BuildGroupByAndFacets(StringBuilder sb, IMap queryMap)
+    private static void BuildGroupBy(StringBuilder sb, IMap groupBy)
     {
-        var groupBy = queryMap.Get("GroupBy").AsMap();
-        var facets = queryMap.Get("Facets").AsMap();
-
-        if (!groupBy.IsEmpty)
-        {
-            sb.Append("group by ");
-            var first = true;
-            foreach (var key in groupBy.Keys())
-            {
-                if (!first)
-                    sb.Append(", ");
-                first = false;
-                sb.Append(NormalizePath(key));
-            }
-            sb.Append(' ');
+        if (groupBy.IsEmpty)
             return;
-        }
 
-        if (!facets.IsEmpty)
+        sb.Append("group by ");
+        var first = true;
+        foreach (var key in groupBy.Keys())
         {
-            sb.Append("select ");
-            var first = true;
-            foreach (var key in facets.Keys())
-            {
-                if (!first)
-                    sb.Append(", ");
-                first = false;
-
-                var facetMap = facets.Get(key).AsMap();
-                var function = facetMap.Get("Function").AsString(); // e.g. "count", "sum"
-                var field = NormalizePath(facetMap.Get("Field").AsString());
-
-                sb.Append($"{function}({field}) as {key}");
-            }
-            sb.Append(' ');
+            if (!first)
+                sb.Append(", ");
+            first = false;
+            sb.Append(NormalizePath(key));
         }
+        sb.Append(' ');
     }
-
-    private const int DefaultLimit = 1024;
 
     private static void BuildLimit(StringBuilder sb, MapValue skipVal, MapValue takeVal, Dictionary<string, object> parameters)
     {
@@ -343,8 +323,37 @@ public static class RqlBuilder
         sb.Append(' ');
     }
 
-    private static void BuildSelect(StringBuilder sb, MapValue selectVal, IMap reduceMap)
+    private static void BuildSelect(StringBuilder sb, MapValue selectVal, IMap reduceMap, IMap facetsMap, IMap groupByMap)
     {
+        // 1. Агрегации Facets для RavenDB строятся через ключевое слово facet() в select
+        // Сохраняем исходное поведение: если GroupBy не пустой, блок Facets игнорируется
+        if (groupByMap.IsEmpty && !facetsMap.IsEmpty)
+        {
+            sb.Append("select ");
+            var first = true;
+            foreach (var key in facetsMap.Keys())
+            {
+                if (!first)
+                    sb.Append(", ");
+                first = false;
+
+                var facetMap = facetsMap.Get(key).AsMap();
+                var field = NormalizePath(facetMap.Get("Field").AsString());
+                
+                // Фаллбэк на случай, если поле внутри объекта не задано явно
+                if (string.IsNullOrEmpty(field))
+                {
+                    field = NormalizePath(key).Replace("Count", "").Replace("Sum", "");
+                }
+
+                // Генерирует нативный синтаксис RavenDB RQL: select facet(Age)
+                sb.Append($"facet({field})");
+            }
+            sb.Append(' ');
+            return; 
+        }
+
+        // 2. Стандартный токен select для проекций, если фасетов нет
         sb.Append("select ");
 
         if (selectVal.IsMap && !selectVal.AsMap().Get("$js").IsEmpty)
@@ -364,6 +373,7 @@ public static class RqlBuilder
                 if (!first)
                     sb.Append(", ");
                 first = false;
+                
                 var funcMap = reduceMap.Get(key).AsMap();
                 BuildReduceFunction(sb, key, funcMap);
             }
@@ -383,7 +393,6 @@ public static class RqlBuilder
             return;
         }
         
-    
         var map = selectVal.AsMap();
         var first1 = true;
         foreach (var key in map.Keys())
@@ -394,7 +403,7 @@ public static class RqlBuilder
 
             var value = map.Get(key);
             sb
-                .Append(NormalizePath(!value.IsString ? key :  value.AsString()))
+                .Append(NormalizePath(!value.IsString ? key : value.AsString()))
                 .Append(" as ")
                 .Append(key)
                 .Append(' ');

@@ -146,13 +146,62 @@ public sealed class DataIntentsProcessor(
             return;
 
         using var session = holder.Store.OpenAsyncSession(new SessionOptions { NoTracking = true });
+        
+        // Фабрика инициализации: общая часть для обоих типов запросов
         var query = session.Advanced.AsyncRawQuery<BlittableJsonReaderObject>(rql);
-
         foreach (var pair in parameters)
             query.AddParameter(pair.Key, pair.Value);
 
-        var results = await query.ToListAsync(i.Token);
+        // Ветвление на основе декларативного дерева QueryMap
+        var hasGroupBy = !i.QueryMap.Get("GroupBy").IsEmpty;
+        var hasFacets =  !i.QueryMap.Get("Facets").IsEmpty;
 
+        var result = (hasFacets && !hasGroupBy)
+            ? await ExecuteFacetQuery(query, i.Token)
+            : await ExecuteStandardQuery(query, i.Token);
+
+        ReportSuccess(i, result.AsMapValue());
+    }
+
+    private async Task<IMap> ExecuteFacetQuery(IAsyncRawDocumentQuery<BlittableJsonReaderObject> query, CancellationToken token)
+    {
+        // RavenDB SDK: Выполняем агрегацию для фасетов
+        var facetResults = await query.ExecuteAggregationAsync(token);
+        var facetsMap = DictionaryMap.New;
+
+        foreach (var pair in facetResults)
+        {
+            var valuesList = DictionaryMap.New;
+            for (var idx = 0; idx < pair.Value.Values.Count; idx++)
+            {
+                var item = pair.Value.Values[idx];
+                var itemMap = DictionaryMap.New.With(
+                    ("Range", new MapValue(item.Range)),
+                    ("Count", new MapValue(item.Count))
+                );
+                valuesList.Put(idx.ToIndexString(), itemMap.AsMapValue());
+            }
+
+            var facetData = DictionaryMap.New.With(
+                ("Name", new MapValue(pair.Key)),
+                ("Values", valuesList.AsMapValue())
+            );
+
+            facetsMap.Put(pair.Key, facetData.AsMapValue());
+        }
+
+        return DictionaryMap.New.With(
+            ("Items", DictionaryMap.New.AsMapValue()), 
+            ("Includes", DictionaryMap.New.AsMapValue()), 
+            ("Order", DictionaryMap.New.AsMapValue()),
+            ("Facets", facetsMap.AsMapValue()) 
+        );
+    }
+
+    private async Task<IMap> ExecuteStandardQuery(IAsyncRawDocumentQuery<BlittableJsonReaderObject> query, CancellationToken token)
+    {
+        // Стандартный сбор плоских документов
+        var results = await query.ToListAsync(token);
         var items = DictionaryMap.New;
         var order = DictionaryMap.New;
 
@@ -166,13 +215,11 @@ public sealed class DataIntentsProcessor(
             order.Put(idx.ToIndexString(), new MapValue(id));
         }
 
-        var result = DictionaryMap.New.With(
+        return DictionaryMap.New.With(
             ("Items", items.AsMapValue()),
             ("Includes", DictionaryMap.New.AsMapValue()), 
             ("Order", order.AsMapValue())
         );
-
-        ReportSuccess(i, result.AsMapValue());
     }
     
     private async Task HandleLoad(LoadIntent i)
