@@ -4,14 +4,14 @@ using Core.Maps;
 
 public interface IBinaryManager
 {
-    Task StoreAsync(string path, MapValue metadata, Stream stream);
-    Task DeleteAsync(string path);
-    BinaryAccessor Get(string path);
+    void Store(string path, MapValue metadata, Stream stream);
+    void Delete(string path);
+    IBinaryAccessor Get(string path);
 }
 
-public interface BinaryAccessor
+public interface IBinaryAccessor
 {
     MapValue Metadata { get; }
     bool Exists { get; }
-    ValueTask<Stream> OpenStreamAsync();
+    Stream OpenStream();
 }

@@ -34,20 +34,19 @@ public sealed class BinaryManager : IBinaryManager, IDisposable
             await Task.Delay(60000, ct);
             foreach (var node in _nodes.Values)
             {
-                if (DateTime.UtcNow - node.LastAccessed > TimeSpan.FromMinutes(1))
+                lock (node)
                 {
-                    if (node.Data != null)
+                    if (DateTime.UtcNow - node.LastAccessed > TimeSpan.FromMinutes(1) && node.Data != null)
                     {
                         if (!string.IsNullOrEmpty(_tempPath))
                         {
                             var id = Guid.NewGuid();
-                            await File.WriteAllBytesAsync(Path.Combine(_tempPath, $"{id}.bin"), node.Data, ct);
+                            File.WriteAllBytes(Path.Combine(_tempPath, $"{id}.bin"), node.Data);
                             node.TempFileId = id;
                             node.Data = null;
                         }
                         else
                         {
-                            // Graceful degradation: no file access, just clear memory
                             node.Data = null; 
                         }
                     }
@@ -56,36 +55,41 @@ public sealed class BinaryManager : IBinaryManager, IDisposable
         }
     }
 
-    public async Task StoreAsync(string path, MapValue metadata, Stream stream)
+    public void Store(string path, MapValue metadata, Stream stream)
     {
-        var ms = new MemoryStream();
-        await stream.CopyToAsync(ms);
-        _nodes[path] = new Node { Metadata = metadata, Data = ms.ToArray(), LastAccessed = DateTime.UtcNow };
+        using (stream)
+        {
+            var ms = new MemoryStream();
+            stream.CopyTo(ms);
+            _nodes[path] = new Node { Metadata = metadata, Data = ms.ToArray(), LastAccessed = DateTime.UtcNow };
+        }
     }
 
-    public Task DeleteAsync(string path)
+    public void Delete(string path)
     {
         if (_nodes.TryRemove(path, out var node) && node.TempFileId.HasValue && !string.IsNullOrEmpty(_tempPath))
-            File.Delete(Path.Combine(_tempPath, $"{node.TempFileId}.bin"));
-        return Task.CompletedTask;
+        {
+            try { File.Delete(Path.Combine(_tempPath, $"{node.TempFileId}.bin")); } catch { /* ignored */ }
+        }
     }
 
-    public BinaryAccessor Get(string path) => new Accessor(_nodes.TryGetValue(path, out var n) ? n : null, _tempPath);
+    public IBinaryAccessor Get(string path) => new Accessor(_nodes.TryGetValue(path, out var n) ? n : null, _tempPath);
 
-    private sealed class Accessor(Node? node, string? tempPath) : BinaryAccessor
+    private sealed class Accessor(Node? node, string? tempPath) : IBinaryAccessor
     {
         public MapValue Metadata => node?.Metadata ?? Empty.Instance;
         public bool Exists => node != null;
-        public ValueTask<Stream> OpenStreamAsync()
+        public Stream OpenStream()
         {
             if (node == null) throw new InvalidOperationException("Node not found");
-            node.LastAccessed = DateTime.UtcNow;
-            
-            if (node.Data != null) return new ValueTask<Stream>(new MemoryStream(node.Data));
-            if (node.TempFileId.HasValue && !string.IsNullOrEmpty(tempPath))
-                return new ValueTask<Stream>(File.OpenRead(Path.Combine(tempPath, $"{node.TempFileId}.bin")));
-            
-            throw new InvalidOperationException("Binary data not available");
+            lock (node)
+            {
+                node.LastAccessed = DateTime.UtcNow;
+                if (node.Data != null) return new MemoryStream(node.Data);
+                if (node.TempFileId.HasValue && !string.IsNullOrEmpty(tempPath))
+                    return File.OpenRead(Path.Combine(tempPath, $"{node.TempFileId}.bin"));
+                throw new InvalidOperationException("Binary data not available");
+            }
         }
     }
 
