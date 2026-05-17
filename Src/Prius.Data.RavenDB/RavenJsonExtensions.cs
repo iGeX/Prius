@@ -1,4 +1,6 @@
-﻿namespace Prius.Data.RavenDB;
+﻿using Sparrow.Json;
+
+namespace Prius.Data.RavenDB;
 
 using Core.Maps;
 using Sparrow.Json.Parsing;
@@ -13,7 +15,14 @@ internal static class RavenJsonExtensions
         public readonly IMap Map = map;
     }
 
-    public static DynamicJsonValue ToDynamicJson(this IMap? map)
+    public static async ValueTask<JsonReaderMap> AsJsonReaderMap(this BlittableJsonReaderObject doc)
+    {
+        var ms = new MemoryStream(doc.Count);
+        await doc.WriteJsonToAsync(ms);
+        return new JsonReaderMap(ms.GetBuffer());
+    }
+
+    public static DynamicJsonValue AsDynamicJson(this IMap? map)
     {
         var result = new DynamicJsonValue();
         if (map is null) return result;

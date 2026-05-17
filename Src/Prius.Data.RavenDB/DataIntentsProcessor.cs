@@ -161,8 +161,7 @@ public sealed class DataIntentsProcessor(
             if (!doc.TryGet("@metadata", out BlittableJsonReaderObject metadata) || !metadata.TryGet("@id", out string id)) 
                 continue;
             
-            var wrapper = new BlittableMemoryWrapper(doc);
-            items.Put(id, new JsonReaderMap(wrapper.Memory).AsMapValue());
+            items.Put(id, (await doc.AsJsonReaderMap()).AsMapValue());
             order.Put(idx.ToIndexString(), new MapValue(id));
         }
 
@@ -181,9 +180,13 @@ public sealed class DataIntentsProcessor(
         var doc = await session.LoadAsync<BlittableJsonReaderObject>(i.DocumentId, i.Token);
 
         if (doc is null)
+        {
+            ReportFailure(i, $"Document not found {i.DocumentId}", "NotFound");
             return;
+        }
 
-        i.Context.Put(i.OutputPath, new JsonReaderMap(new BlittableMemoryWrapper(doc).Memory).AsMapValue());
+        var map = await doc.AsJsonReaderMap();
+        i.Context.Put(i.OutputPath, map.AsMapValue());
     }
 
     private async Task HandleDelete(DeleteIntent i)
@@ -218,7 +221,7 @@ public sealed class DataIntentsProcessor(
         using var session = holder.Store.OpenAsyncSession();
         session.Advanced.UseOptimisticConcurrency = true;
         
-        var command = new PutCommandData(id, i.Document.DeepGet("@metadata/@change-vector").AsString(), i.Document.ToDynamicJson());
+        var command = new PutCommandData(id, i.Document.DeepGet("@metadata/@change-vector").AsString(), i.Document.AsDynamicJson());
         session.Advanced.Defer(command);
         await session.SaveChangesAsync(i.Token);
         
@@ -226,7 +229,7 @@ public sealed class DataIntentsProcessor(
             logger.LogDebug("Successfully saved document with ID: {Id}", id.AsString());
     }
 
-    private static void ReportFailure(StoreIntent i, string message, string type)
+    private static void ReportFailure(IIntent i, string message, string type)
     {
         var failureMap = DictionaryMap.New.With(
             ("Message", message), 
@@ -248,7 +251,7 @@ public sealed class DataIntentsProcessor(
         { 
             ["Val"] = value.Match<object>(
                 onEmpty: _ => null!,
-                onMap: map => map.ToDynamicJson(),
+                onMap: map => map.AsDynamicJson(),
                 onValue: val => val
             )
         };
@@ -335,7 +338,7 @@ public sealed class DataIntentsProcessor(
             if (!attachmentObj.TryGet("Name", out string name)) 
                 continue;
 
-            result.Put(name, new JsonReaderMap(new BlittableMemoryWrapper(attachmentObj).Memory));
+            result.Put(name, (await attachmentObj.AsJsonReaderMap()).AsMapValue());
         }
 
         i.Context.Put(i.OutputPath, result.AsMapValue());
