@@ -80,22 +80,6 @@ public class RqlBuilderTests
     }
 
     [Fact]
-    public void Should_Throw_Exception_When_Reduce_Is_Used_Without_GroupBy()
-    {
-        // Arrange
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Sales")),
-            ("Reduce", DictionaryMap.New.With(
-                ("Revenue", DictionaryMap.New.With(("$sum", new MapValue("Price"))).AsMapValue())
-            ).AsMapValue())
-        );
-
-        // Act & Assert
-        var exception = Assert.Throws<InvalidOperationException>(() => RqlBuilder.Build(queryMap));
-        Assert.Contains("Map-Reduce aggregations (Reduce) require a GroupBy clause", exception.Message);
-    }
-    
-    [Fact]
     public void Should_Build_Search_Operator_With_And_And_Boost()
     {
         // Arrange
@@ -278,5 +262,129 @@ public class RqlBuilderTests
 
         // Assert
         Assert.Equal("from index 'Orders' select load('CompanyId').'Name' as 'CompanyName' limit $p0, $p1", rql);
+    }
+    
+    [Fact]
+    public void Should_Build_Server_Side_Select_Load_And_Highlighting()
+    {
+        // Arrange
+        var queryMap = DictionaryMap.New.With(
+            ("From", new MapValue("Orders")),
+            ("Select", DictionaryMap.New.With(
+                ("CompanyName", DictionaryMap.New.With(
+                    ("$load", DictionaryMap.New.With(
+                        ("Field", new MapValue("CompanyId")),
+                        ("Path", new MapValue("Name"))
+                    ).AsMapValue())
+                ).AsMapValue())
+            ).AsMapValue()),
+            ("Highlight", DictionaryMap.New.With(("Field", new MapValue("Notes"))).AsMapValue())
+        );
+
+        // Act
+        var (rql, _) = RqlBuilder.Build(queryMap);
+
+        // Assert
+        Assert.Equal("from index 'Orders' include highlight('Notes', 128, 5) select load('CompanyId').'Name' as 'CompanyName' limit $p0, $p1", rql);
+    }
+    
+    [Fact]
+    public void Should_Build_Query_With_Standard_Includes_Enclosed_In_Quotes()
+    {
+        // Arrange
+        var queryMap = DictionaryMap.New.With(
+            ("From", new MapValue("Orders")),
+            ("Where", DictionaryMap.New.With(
+                ("Status", new MapValue("Shipped"))
+            ).AsMapValue()),
+            ("Include", DictionaryMap.New.With(
+                ("CompanyId", DictionaryMap.New.AsMapValue())
+            ).AsMapValue())
+        );
+
+        // Act
+        var (rql, parameters) = RqlBuilder.Build(queryMap);
+
+        // Assert
+        Assert.Equal("from index 'Orders' where 'Status' = $p0 include 'CompanyId' limit $p1, $p2", rql);
+        Assert.Equal("Shipped", parameters["p0"]);
+    }
+    
+    [Fact]
+    public void Should_Build_Metadata_Lookups_And_Exists_And_Null_Operators()
+    {
+        // Arrange
+        var queryMap = DictionaryMap.New.With(
+            ("From", new MapValue("Users")),
+            ("Where", DictionaryMap.New.With(
+                ("@metadata/last-modified", DictionaryMap.New.With(("$gt", new MapValue("2026-01-01"))).AsMapValue()),
+                ("DeletedAt", DictionaryMap.New.With(("$null", new MapValue(true))).AsMapValue()),
+                ("ActivationCode", DictionaryMap.New.With(("$exists", new MapValue(false))).AsMapValue())
+            ).AsMapValue())
+        );
+
+        // Act
+        var (rql, parameters) = RqlBuilder.Build(queryMap);
+
+        // Assert
+        Assert.Equal("from index 'Users' where metadata(this)['last-modified'] > $p0 and 'DeletedAt' = null and exists('ActivationCode') = false limit $p1, $p2", rql);
+        Assert.Equal("2026-01-01", parameters["p0"]);
+    }
+
+    [Fact]
+    public void Should_Build_In_And_All_Operators_With_Arrays()
+    {
+        // Arrange
+        var queryMap = DictionaryMap.New.With(
+            ("From", new MapValue("Products")),
+            ("Where", DictionaryMap.New.With(
+                ("Status", DictionaryMap.New.With(
+                    ("$in", DictionaryMap.New.With(
+                        ("Active", new MapValue(true)),
+                        ("Pending", new MapValue(true))
+                    ).AsMapValue())
+                ).AsMapValue()),
+                ("Tags", DictionaryMap.New.With(
+                    ("$all", DictionaryMap.New.With(
+                        ("Premium", new MapValue(true)),
+                        ("Featured", new MapValue(true))
+                    ).AsMapValue())
+                ).AsMapValue())
+            ).AsMapValue())
+        );
+
+        // Act
+        var (rql, parameters) = RqlBuilder.Build(queryMap);
+
+        // Assert
+        Assert.Equal("from index 'Products' where 'Status' in ($p0, $p1) and 'Tags' all in ($p2, $p3) limit $p4, $p5", rql);
+        Assert.True(parameters.ContainsKey("p0"));
+        Assert.True(parameters.ContainsKey("p1"));
+        Assert.True(parameters.ContainsKey("p2"));
+        Assert.True(parameters.ContainsKey("p3"));
+    }
+
+    [Fact]
+    public void Should_Build_Search_With_Automatic_Wildcard_Suffix()
+    {
+        // Arrange
+        var queryMap = DictionaryMap.New.With(
+            ("From", new MapValue("Docs")),
+            ("Where", DictionaryMap.New.With(
+                ("Title", DictionaryMap.New.With(
+                    ("$search", DictionaryMap.New.With(
+                        ("$term", new MapValue("Raven")),
+                        ("$options", DictionaryMap.New.With(("Wildcard", new MapValue(true))).AsMapValue())
+                    ).AsMapValue())
+                ).AsMapValue())
+            ).AsMapValue())
+        );
+
+        // Act
+        var (rql, parameters) = RqlBuilder.Build(queryMap);
+
+        // Assert
+        Assert.Equal("from index 'Docs' where search('Title', $p0) limit $p1, $p2", rql);
+        Assert.Equal("Raven*", parameters["p0"]);
     }
 }

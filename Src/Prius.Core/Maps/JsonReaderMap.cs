@@ -85,7 +85,13 @@ public sealed class JsonReaderMap(ReadOnlyMemory<byte> data) : IMap
             case JsonTokenType.String: 
                 return new MapValue(reader.GetString()!);
             case JsonTokenType.Number: 
-                return new MapValue(reader.GetInt64());
+                // Сначала безопасно пытаемся прочитать как целое число
+                if (reader.TryGetInt64(out var longVal))
+                {
+                    return new MapValue(longVal);
+                }
+                // Если не получилось (есть точка или дробь), забираем как точный decimal
+                return new MapValue(reader.GetDecimal());
             case JsonTokenType.True: 
                 return new MapValue(true);
             case JsonTokenType.False: 
@@ -96,7 +102,7 @@ public sealed class JsonReaderMap(ReadOnlyMemory<byte> data) : IMap
                 reader.Skip(); 
                 var end = (int)reader.BytesConsumed;
                 var length = end - start;
-                
+            
                 return new MapValue(new JsonReaderMap(data.Slice(start, length)));
             case JsonTokenType.None:
             case JsonTokenType.EndObject:

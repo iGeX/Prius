@@ -24,10 +24,10 @@ public static class RqlBuilder
             return (string.Empty, []);
 
         BuildFrom(sb, fromVal, queryMap.Get("TimeSeries").AsMap());
-        BuildInclude(sb, queryMap.Get("Include").AsMap());
         BuildWhereAndSpatial(sb, queryMap, parameters);
-        BuildGroupBy(sb, queryMap.Get("GroupBy").AsMap());
         BuildOrderBy(sb, queryMap.Get("OrderBy").AsMap(), queryMap.Get("Spatial").AsMap());
+        
+        BuildInclude(sb, queryMap.Get("Include").AsMap(), queryMap.Get("Highlight").AsMap());
         
         BuildSelect(
             sb, 
@@ -74,20 +74,26 @@ public static class RqlBuilder
         if (!hasWhere && !hasSpatial)
             return;
 
+        var hasValidSpatial = false;
+        if (hasSpatial)
+        {
+            var withinMap = spatialMap.Get("$within").AsMap();
+            hasValidSpatial = !withinMap.Get("Wkt").IsEmpty || !withinMap.Get("Circle").IsEmpty;
+        }
+
+        if (!hasWhere && !hasValidSpatial)
+            return;
+
         sb.Append("where ");
         
         if (hasWhere)
             BuildWhere(sb, whereMap, parameters);
 
-        if (hasSpatial)
+        if (hasValidSpatial)
         {
-            var op = spatialMap.Keys().FirstOrDefault(k => k.StartsWith('$'));
-            if (op == "$within" && !spatialMap.Get("$within").AsMap().Get("Wkt").IsEmpty)
-            {
-                if (hasWhere)
-                    sb.Append(" and ");
-                BuildSpatial(sb, spatialMap, parameters);
-            }
+            if (hasWhere)
+                sb.Append(" and ");
+            BuildSpatial(sb, spatialMap, parameters);
         }
         sb.Append(' ');
     }
@@ -112,33 +118,11 @@ public static class RqlBuilder
             return;
         }
 
-        var pLat = "p" + parameters.Count.ToIndexString();
-        parameters.Add(pLat, circle.Get("Latitude").AsValue<decimal>());
-        
-        var pLng = "p" + parameters.Count.ToIndexString();
-        parameters.Add(pLng, circle.Get("Longitude").AsValue<decimal>());
-        
-        var pRad = "p" + parameters.Count.ToIndexString();
-        parameters.Add(pRad, circle.Get("Radius").AsValue<decimal>());
+        var lat = circle.Get("Latitude").AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var lng = circle.Get("Longitude").AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var rad = circle.Get("Radius").AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture);
 
-        sb.Append($"spatial.within({field}, spatial.circle(${pLat}, ${pLng}, ${pRad}))");
-    }
-
-    private static void BuildGroupBy(StringBuilder sb, IMap groupBy)
-    {
-        if (groupBy.IsEmpty)
-            return;
-
-        sb.Append("group by ");
-        var first = true;
-        foreach (var key in groupBy.Keys())
-        {
-            if (!first)
-                sb.Append(", ");
-            first = false;
-            sb.Append(NormalizePath(key));
-        }
-        sb.Append(' ');
+        sb.Append($"spatial.within({field}, spatial.circle({rad}, {lat}, {lng}))");
     }
 
     private static void BuildLimit(StringBuilder sb, MapValue skipVal, MapValue takeVal, Dictionary<string, object> parameters)
@@ -155,13 +139,20 @@ public static class RqlBuilder
         sb.Append($"limit ${pSkip}, ${pTake}");
     }
 
-    private static void BuildInclude(StringBuilder sb, IMap includeMap)
+    private static void BuildInclude(StringBuilder sb, IMap includeMap, IMap highlightMap)
     {
         foreach (var key in includeMap.Keys())
         {
             sb.Append("include ");
             sb.Append(NormalizePath(key));
             sb.Append(' ');
+        }
+
+        if (!highlightMap.IsEmpty)
+        {
+            var originalField = highlightMap.Get("Field").AsString();
+            var field = NormalizePath(originalField);
+            sb.Append($"include highlight({field}, 128, 5) ");
         }
     }
 
@@ -409,7 +400,9 @@ public static class RqlBuilder
         if (!reduceMap.IsEmpty)
         {
             if (groupByMap.IsEmpty)
-                throw new InvalidOperationException("Map-Reduce aggregations (Reduce) require a GroupBy clause in RavenDB RQL.");
+            {
+                throw new InvalidOperationException("Map-Reduce aggregations (Reduce) require a GroupBy clause in QueryMap.");
+            }
 
             var first = true;
             foreach (var key in reduceMap.Keys())

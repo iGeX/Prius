@@ -157,7 +157,7 @@ public sealed class DataIntentsProcessor(
 
         var result = (hasFacets && !hasGroupBy)
             ? await ExecuteFacetQuery(query, i.Token)
-            : await ExecuteStandardQuery(query, i.Token);
+            : await ExecuteStandardQuery(query, i.Token, i.QueryMap);
 
         ReportSuccess(i, result.AsMapValue());
     }
@@ -196,26 +196,82 @@ public sealed class DataIntentsProcessor(
         );
     }
 
-    private async Task<IMap> ExecuteStandardQuery(IAsyncRawDocumentQuery<BlittableJsonReaderObject> query, CancellationToken token)
+    private static async Task<IMap> ExecuteStandardQuery(IAsyncRawDocumentQuery<BlittableJsonReaderObject> query, CancellationToken token, IMap queryMap)
     {
-        var results = await query.ToListAsync(token);
+        var queryResult = await ((AsyncDocumentQuery<BlittableJsonReaderObject>) query).GetQueryResultAsync(token);
+        
+        var results = queryResult.Results;
         var items = DictionaryMap.New;
         var order = DictionaryMap.New;
+        var highlightsMap = DictionaryMap.New;
+        var includesMap = DictionaryMap.New;
+        
+        var groupByMap = queryMap.Get("GroupBy").AsMap();
+        var hasGroupBy = !groupByMap.IsEmpty;
 
-        for (var idx = 0; idx < results.Count; idx++)
+        for (var idx = 0; idx < results.Length; idx++)
         {
             var doc = results[idx];
-            if (!doc.TryGet("@metadata", out BlittableJsonReaderObject metadata) || !metadata.TryGet("@id", out string id)) 
+            if (doc is not BlittableJsonReaderObject json) 
                 continue;
-        
-            items.Put(id, (await doc.AsJsonReaderMap()).AsMapValue());
+                
+            string? id = null;
+            
+            if (json.TryGet("@metadata", out BlittableJsonReaderObject metadata) && metadata.TryGet("@id", out string metadataId))
+                id = metadataId;
+            else if (hasGroupBy)
+            {
+                var idBuilder = new StringBuilder();
+                foreach (var groupKey in groupByMap.Keys(true))
+                {
+                    if (json.TryGet(groupKey, out object val) && val != null)
+                    {
+                        if (idBuilder.Length > 0) 
+                            idBuilder.Append('/');
+                        idBuilder.Append(val);
+                    }
+                }
+                id = idBuilder.ToString();
+            }
+
+            if (string.IsNullOrEmpty(id))
+                continue;
+            
+            items.Put(id, (await json.AsJsonReaderMap()).AsMapValue());
             order.Put(idx.ToIndexString(), new MapValue(id));
+        }
+        
+        if (queryResult.Includes != null)
+        {
+            foreach (var propertyName in queryResult.Includes.GetPropertyNames())
+            {
+                if (queryResult.Includes.TryGet(propertyName, out BlittableJsonReaderObject linkedDoc)) 
+                    includesMap.Put(propertyName, (await linkedDoc.AsJsonReaderMap()).AsMapValue());
+            }
+        }
+        
+        if (!queryMap.Get("Highlight").IsEmpty && queryResult.Highlightings != null)
+        {
+            var originalField = queryMap.Get("Highlight").AsMap().Get("Field").AsString();
+            if (queryResult.Highlightings.TryGetValue(originalField, out var docsWithHighlights))
+            {
+                foreach (var pair in docsWithHighlights)
+                {
+                    var docId = pair.Key;
+                    var fragments = pair.Value;
+                    var fragmentsList = DictionaryMap.New;
+                    for (var fIdx = 0; fIdx < fragments.Length; fIdx++)
+                        fragmentsList.Put(fIdx.ToIndexString(), new MapValue(fragments[fIdx]));
+                    highlightsMap.Put(docId, DictionaryMap.New.With(originalField, fragmentsList.AsMapValue()).AsMapValue());
+                }
+            }
         }
 
         return DictionaryMap.New.With(
             ("Items", items.AsMapValue()),
-            ("Includes", DictionaryMap.New.AsMapValue()), 
-            ("Order", order.AsMapValue())
+            ("Includes", includesMap.AsMapValue()), 
+            ("Order", order.AsMapValue()),
+            ("Highlights", highlightsMap.AsMapValue())
         );
     }
     

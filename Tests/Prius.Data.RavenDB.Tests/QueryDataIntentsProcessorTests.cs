@@ -33,10 +33,41 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
                         { 
                             Indexing = FieldIndexing.Search,
                             Storage = FieldStorage.Yes,
-                            Analyzer = "StandardAnalyzer"
+                            TermVector = FieldTermVector.WithPositionsAndOffsets
                         }
                     }
                 }
+            };
+    }
+    
+    private class Orders_ByTotal : AbstractIndexCreationTask
+    {
+        public override IndexDefinition CreateIndexDefinition() =>
+            new()
+            {
+                Name = "Orders/ByTotal",
+                Maps = { "from order in docs.Orders select new { Total = order.Total }" }
+            };
+    }
+    
+    private class Sales_ByProduct : AbstractIndexCreationTask
+    {
+        public override IndexDefinition CreateIndexDefinition() =>
+            new()
+            {
+                Name = "Sales/ByProduct",
+                Maps = { "from sale in docs.Sales select new { ProductId = sale.ProductId, Amount = sale.Amount, Count = 1 }" },
+                Reduce = "from result in results group result by result.ProductId into g select new { ProductId = g.Key, Amount = g.Sum(x => x.Amount), Count = g.Sum(x => x.Count) }"
+            };
+    }
+
+    private class Stores_ByLocation : AbstractIndexCreationTask
+    {
+        public override IndexDefinition CreateIndexDefinition() =>
+            new()
+            {
+                Name = "Stores/ByLocation",
+                Maps = { "from store in docs.Stores select new { Coordinates = CreateSpatialField(store.Lat, store.Lng) }" }
             };
     }
 
@@ -324,6 +355,246 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             Assert.False(context.PutCalls.ContainsKey("output/results"));
             Assert.True(context.PutCalls.ContainsKey("failures/1"), "Should report architectural failure for invalid map-reduce");
             
+            return Task.CompletedTask;
+        });
+    }
+    
+    [Fact]
+    public async Task ShouldQueryWithHighlighting()
+    {
+        using var store = GetDocumentStore();
+        await new Users_ByNotes().ExecuteAsync(store, token: TestContext.Current.CancellationToken);
+        
+        using (var session = store.OpenAsyncSession())
+        {
+            await StoreUser(new { Notes = "This is a very important RavenDB developer entry" }, "users/1", session);
+            await session.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        WaitForIndexing(store);
+
+        var context = new MockReactorContext();
+        var queryMap = DictionaryMap.New.With(
+            ("From", new MapValue("Users/ByNotes")),
+            ("Where", DictionaryMap.New.With(
+                ("Notes", DictionaryMap.New.With(
+                    ("$search", DictionaryMap.New.With(("$term", new MapValue("RavenDB"))).AsMapValue())
+                ).AsMapValue())
+            ).AsMapValue()),
+            ("Highlight", DictionaryMap.New.With(("Field", new MapValue("Notes"))).AsMapValue())
+        );
+
+        var provider = new MockDataIntentsProvider
+        {
+            Queries = [new QueryIntent(context, queryMap, "output/results", "failures/1", TestContext.Current.CancellationToken)]
+        };
+
+        await ExecuteTest(store, provider, () =>
+        {
+            Assert.True(context.PutCalls.ContainsKey("output/results"), "Should generate successful output");
+            var results = context.PutCalls["output/results"].AsMap();
+            var highlights = results.Get("Highlights").AsMap();
+
+            Assert.False(highlights.IsEmpty, "Highlights map should contain keys for matched documents");
+            Assert.True(highlights.ContainsKey("users/1"), "Highlights should have entry for users/1");
+
+            var userHighlights = highlights.Get("users/1").AsMap();
+            Assert.True(userHighlights.ContainsKey("Notes"), "Should contain highlights for 'Notes' field");
+        
+            return Task.CompletedTask;
+        });
+    }
+
+    private static async Task StoreOrder(object order, string id, IAsyncDocumentSession session)
+    {
+        await session.StoreAsync(order, id, TestContext.Current.CancellationToken);
+        session.Advanced.GetMetadataFor(order)["@collection"] = "Orders";
+    }
+
+    [Fact]
+    public async Task ShouldQueryWithStandardIncludes()
+    {
+        // Arrange
+        using var store = GetDocumentStore();
+        
+        await new Orders_ByTotal().ExecuteAsync(store, token: TestContext.Current.CancellationToken);
+        
+        using (var session = store.OpenAsyncSession())
+        {
+            var company = new { Name = "Microsoft" };
+            await session.StoreAsync(company, "companies/1", TestContext.Current.CancellationToken);
+            session.Advanced.GetMetadataFor(company)["@collection"] = "Companies";
+            
+            var order = new { Total = 500M, CompanyId = "companies/1" };
+            await StoreOrder(order, "orders/1", session);
+            
+            await session.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        WaitForIndexing(store);
+
+        var context = new MockReactorContext();
+        var queryMap = DictionaryMap.New.With(
+            ("From", new MapValue("Orders/ByTotal")),
+            ("Where", DictionaryMap.New.With(
+                ("Total", DictionaryMap.New.With(("$eq", new MapValue(500M))).AsMapValue())
+            ).AsMapValue()),
+            ("Include", DictionaryMap.New.With(
+                ("CompanyId", DictionaryMap.New.AsMapValue())
+            ).AsMapValue())
+        );
+
+        var provider = new MockDataIntentsProvider
+        {
+            Queries = [new QueryIntent(context, queryMap, "output/results", "failures/1", TestContext.Current.CancellationToken)]
+        };
+
+        // Act
+        await ExecuteTest(store, provider, () =>
+        {
+            // Assert
+            if (context.PutCalls.ContainsKey("failures/1"))
+            {
+                var failureReason = context.PutCalls["failures/1"].AsMap().Serialize();
+                Assert.Fail("Query failed with exception: " + failureReason);
+            }
+
+            Assert.True(context.PutCalls.ContainsKey("output/results"), "Should generate successful output");
+            var results = context.PutCalls["output/results"].AsMap();
+            
+            var items = results.Get("Items").AsMap();
+            Assert.True(items.ContainsKey("orders/1"), "Should find the document in Items");
+            
+            var includes = results.Get("Includes").AsMap();
+            Assert.False(includes.IsEmpty, "Includes map should not be empty");
+            Assert.True(includes.ContainsKey("companies/1"), "Includes should contain the referenced company document");
+            
+            var companyDoc = includes.Get("companies/1").AsMap();
+            Assert.Equal("Microsoft", companyDoc.Get("Name").AsString());
+
+            return Task.CompletedTask;
+        });
+    }
+    
+    private static async Task StoreSale(object sale, string id, IAsyncDocumentSession session)
+    {
+        await session.StoreAsync(sale, id, TestContext.Current.CancellationToken);
+        session.Advanced.GetMetadataFor(sale)["@collection"] = "Sales";
+    }
+
+    private static async Task StorePlace(object place, string id, IAsyncDocumentSession session)
+    {
+        await session.StoreAsync(place, id, TestContext.Current.CancellationToken);
+        session.Advanced.GetMetadataFor(place)["@collection"] = "Stores";
+    }
+
+    [Fact]
+    public async Task ShouldQueryMapReduceSuccessfulScenario()
+    {
+        // Arrange
+        using var store = GetDocumentStore();
+        await new Sales_ByProduct().ExecuteAsync(store, token: TestContext.Current.CancellationToken);
+
+        using (var session = store.OpenAsyncSession())
+        {
+            await StoreSale(new { ProductId = "prod/1", Amount = 100L }, "sales/1", session);
+            await StoreSale(new { ProductId = "prod/1", Amount = 150L }, "sales/2", session);
+            await session.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        WaitForIndexing(store);
+
+        var context = new MockReactorContext();
+        var queryMap = DictionaryMap.New.With(
+            ("From", new MapValue("Sales/ByProduct")),
+            ("GroupBy", DictionaryMap.New.With(("ProductId", DictionaryMap.New.AsMapValue())).AsMapValue())
+        );
+
+        var provider = new MockDataIntentsProvider
+        {
+            Queries = [new QueryIntent(context, queryMap, "output/results", "failures/1", TestContext.Current.CancellationToken)]
+        };
+
+        // Act
+        await ExecuteTest(store, provider, () =>
+        {
+            if (context.PutCalls.ContainsKey("failures/1"))
+            {
+                var failureReason = context.PutCalls["failures/1"].AsMap().Serialize();
+                Assert.Fail("Map-Reduce query failed: " + failureReason);
+            }
+
+            Assert.True(context.PutCalls.ContainsKey("output/results"), "Should generate successful output");
+            var results = context.PutCalls["output/results"].AsMap();
+            
+            var items = results.Get("Items").AsMap();
+            Assert.False(items.IsEmpty, "Should return aggregated items");
+            
+            Assert.True(items.ContainsKey("prod/1"), "Processor should concatenate GroupBy values to form ID 'prod/1'");
+            
+            var aggregatedRow = items.Get("prod/1").AsMap();
+            Assert.Equal(250L, aggregatedRow.Get("Amount").AsLong());
+            Assert.Equal(2L, aggregatedRow.Get("Count").AsLong());
+
+            return Task.CompletedTask;
+        });
+    }
+
+    [Fact]
+    public async Task ShouldQuerySpatialWithDistanceSorting()
+    {
+        // Arrange
+        using var store = GetDocumentStore();
+        await new Stores_ByLocation().ExecuteAsync(store, token: TestContext.Current.CancellationToken);
+
+        using (var session = store.OpenAsyncSession())
+        {
+            await StorePlace(new { Lat = 55.7522M, Lng = 37.6156M, Name = "Moscow Store" }, "stores/1", session);
+            await StorePlace(new { Lat = 59.9342M, Lng = 30.3351M, Name = "Spb Store" }, "stores/2", session);
+            await session.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        WaitForIndexing(store);
+
+        var context = new MockReactorContext();
+        var queryMap = DictionaryMap.New.With(
+            ("From", new MapValue("Stores/ByLocation")),
+            ("Spatial", DictionaryMap.New.With(
+                ("Field", new MapValue("Coordinates")),
+                ("$within", DictionaryMap.New.With(
+                    ("Circle", DictionaryMap.New.With(
+                        ("Latitude", new MapValue(55.7522M)),
+                        ("Longitude", new MapValue(37.6156M)),
+                        ("Radius", new MapValue(1000M))
+                    ).AsMapValue())
+                ).AsMapValue())
+            ).AsMapValue()),
+            ("OrderBy", DictionaryMap.New.With(
+                ("Order", DictionaryMap.New.With(("0", new MapValue("$spatialDistance"))).AsMapValue()),
+                ("Data", DictionaryMap.New.With(("$spatialDistance", new MapValue("Asc"))).AsMapValue())
+            ).AsMapValue())
+        );
+
+        var provider = new MockDataIntentsProvider
+        {
+            Queries = [new QueryIntent(context, queryMap, "output/results", "failures/1", TestContext.Current.CancellationToken)]
+        };
+
+        // Act
+        await ExecuteTest(store, provider, () =>
+        {
+            // Assert
+            if (context.PutCalls.TryGetValue("failures/1", out var value))
+            {
+                var failureReason = value.AsMap().Serialize();
+                Assert.Fail("Spatial query failed: " + failureReason);
+            }
+
+            Assert.True(context.PutCalls.ContainsKey("output/results"));
+            var results = context.PutCalls["output/results"].AsMap();
+            var items = results.Get("Items").AsMap();
+            
+            Assert.Equal(2, items.Keys().Count());
             return Task.CompletedTask;
         });
     }
