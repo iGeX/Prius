@@ -1,3 +1,4 @@
+// ReSharper disable PossibleMultipleEnumeration
 namespace Prius.Data.RavenDB;
 
 using System;
@@ -26,7 +27,7 @@ public static class RqlBuilder
         BuildInclude(sb, queryMap.Get("Include").AsMap());
         BuildWhereAndSpatial(sb, queryMap, parameters);
         BuildGroupBy(sb, queryMap.Get("GroupBy").AsMap());
-        BuildOrderBy(sb, queryMap.Get("OrderBy").AsMap());
+        BuildOrderBy(sb, queryMap.Get("OrderBy").AsMap(), queryMap.Get("Spatial").AsMap());
         
         BuildSelect(
             sb, 
@@ -80,9 +81,13 @@ public static class RqlBuilder
 
         if (hasSpatial)
         {
-            if (hasWhere)
-                sb.Append(" and ");
-            BuildSpatial(sb, spatialMap, parameters);
+            var op = spatialMap.Keys().FirstOrDefault(k => k.StartsWith('$'));
+            if (op == "$within" && !spatialMap.Get("$within").AsMap().Get("Wkt").IsEmpty)
+            {
+                if (hasWhere)
+                    sb.Append(" and ");
+                BuildSpatial(sb, spatialMap, parameters);
+            }
         }
         sb.Append(' ');
     }
@@ -95,9 +100,18 @@ public static class RqlBuilder
         if (op != "$within")
             return;
 
-        var circle = spatialMap.Get("$within").AsMap().Get("Circle").AsMap();
-        
-        // Переведено с double на decimal
+        var withinMap = spatialMap.Get("$within").AsMap();
+        var circle = withinMap.Get("Circle").AsMap();
+        var wkt = withinMap.Get("Wkt");
+
+        if (!wkt.IsEmpty)
+        {
+            var pWkt = "p" + parameters.Count.ToIndexString();
+            parameters.Add(pWkt, wkt.AsString());
+            sb.Append($"spatial.within({field}, spatial.wkt(${pWkt}))");
+            return;
+        }
+
         var pLat = "p" + parameters.Count.ToIndexString();
         parameters.Add(pLat, circle.Get("Latitude").AsValue<decimal>());
         
@@ -249,8 +263,8 @@ public static class RqlBuilder
                     break;
                 case "$in":
                 case "$all":
-                    var keys = val.AsMap().Keys().ToList();
-                    if (keys.Count == 0)
+                    var keys = val.AsMap().Keys();
+                    if (!keys.Any())
                     {
                         sb.Append("id() == null");
                         break;
@@ -276,6 +290,10 @@ public static class RqlBuilder
                     var options = val.AsMap().Get("$options").AsMap();
                     var searchOp = options.Get("Operator").IsEmpty ? "OR" : options.Get("Operator").AsString();
                     var boost = options.Get("Boost");
+                    var wildcard = !options.Get("Wildcard").IsEmpty && options.Get("Wildcard").AsValue<bool>();
+
+                    if (wildcard && !term.EndsWith('*'))
+                        term += "*";
 
                     var pName1 = "p" + parameters.Count.ToIndexString();
                     parameters.Add(pName1, term);
@@ -288,7 +306,6 @@ public static class RqlBuilder
                     if (!boost.IsEmpty)
                     {
                         sb.Append(" boost ");
-                        // Полностью переведено на decimal, извлекаем честный 2.5M
                         var boostValue = boost.AsValue<decimal>();
                         sb.Append(boostValue.ToString(System.Globalization.CultureInfo.InvariantCulture));
                     }
@@ -316,7 +333,7 @@ public static class RqlBuilder
         sb.Append(pName);
     }
 
-    private static void BuildOrderBy(StringBuilder sb, IMap orderByMap)
+    private static void BuildOrderBy(StringBuilder sb, IMap orderByMap, IMap spatialMap)
     {
         var orderMap = orderByMap.Get("Order").AsMap();
         var dataMap = orderByMap.Get("Data").AsMap();
@@ -335,7 +352,17 @@ public static class RqlBuilder
             var fieldKey = orderMap.Get(i.ToIndexString()).AsString();
             var direction = dataMap.Get(fieldKey).AsString();
             
-            sb.Append(NormalizePath(fieldKey));
+            if (fieldKey == "$spatialDistance")
+            {
+                var field = NormalizePath(spatialMap.Get("Field").AsString());
+                var circle = spatialMap.Get("$within").AsMap().Get("Circle").AsMap();
+                sb.Append($"spatial.distance({field}, spatial.point({circle.Get("Latitude").AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture)}, {circle.Get("Longitude").AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture)}))");
+            }
+            else
+            {
+                sb.Append(NormalizePath(fieldKey));
+            }
+
             if (string.Equals(direction, "Desc", StringComparison.OrdinalIgnoreCase))
                 sb.Append(" desc");
         }
@@ -345,9 +372,7 @@ public static class RqlBuilder
     private static void BuildSelect(StringBuilder sb, MapValue selectVal, IMap reduceMap, IMap facetsMap, IMap groupByMap)
     {
         if (selectVal.IsEmpty && reduceMap.IsEmpty && facetsMap.IsEmpty)
-        {
             return;
-        }
 
         if (groupByMap.IsEmpty && !facetsMap.IsEmpty)
         {
@@ -362,9 +387,7 @@ public static class RqlBuilder
                 var field = NormalizePath(facetMap.Get("Field").AsString());
                 
                 if (string.IsNullOrEmpty(field))
-                {
                     field = NormalizePath(key).Replace("Count", "").Replace("Sum", "");
-                }
 
                 sb.Append($"facet({field})");
             }
@@ -386,9 +409,7 @@ public static class RqlBuilder
         if (!reduceMap.IsEmpty)
         {
             if (groupByMap.IsEmpty)
-            {
                 throw new InvalidOperationException("Map-Reduce aggregations (Reduce) require a GroupBy clause in RavenDB RQL.");
-            }
 
             var first = true;
             foreach (var key in reduceMap.Keys())
@@ -425,11 +446,19 @@ public static class RqlBuilder
             var value = map.Get(key);
             var escapedAlias = $"'{key.Replace("'", "''")}'";
 
-            sb
-                .Append(NormalizePath(!value.IsString ? key : value.AsString()))
-                .Append(" as ")
-                .Append(escapedAlias)
-                .Append(' ');
+            if (value.IsMap && !value.AsMap().Get("$load").IsEmpty)
+            {
+                var loadMap = value.AsMap().Get("$load").AsMap();
+                var targetField = NormalizePath(loadMap.Get("Field").AsString());
+                var pathInTarget = NormalizePath(loadMap.Get("Path").AsString());
+                sb.Append($"load({targetField}).{pathInTarget} as {escapedAlias}");
+            }
+            else
+            {
+                sb.Append(NormalizePath(!value.IsString ? key : value.AsString()))
+                  .Append(" as ")
+                  .Append(escapedAlias);
+            }
         }
         sb.Append(' ');
     }
@@ -459,6 +488,12 @@ public static class RqlBuilder
     {
         if (string.IsNullOrEmpty(path))
             return string.Empty;
+
+        if (path.StartsWith("@metadata/"))
+        {
+            var metaProp = path.Substring("@metadata/".Length).Replace("'", "''");
+            return $"metadata(this)['{metaProp}']";
+        }
 
         var mapPath = new MapPath(path);
         var sb = new StringBuilder();

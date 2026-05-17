@@ -14,7 +14,6 @@ public class RqlBuilderTests
             ("From", new MapValue("Users")),
             ("Where", DictionaryMap.New.With(
                 ("Status", new MapValue("Active")),
-                // Возвращаем плоский ключ. NormalizePath сам разобьет его по точке!
                 ("Profile-Data/Age", DictionaryMap.New.With(("$gt", new MapValue(21L))).AsMapValue()) // Не забываем 21L
             ).AsMapValue()),
             ("Take", new MapValue(50))
@@ -24,7 +23,6 @@ public class RqlBuilderTests
         var (rql, parameters) = RqlBuilder.Build(queryMap);
 
         // Assert
-        // Теперь без лишнего "select *" в конце
         Assert.Equal("from index 'Users' where 'Status' = $p0 and 'Profile-Data'.'Age' > $p1 limit $p2, $p3", rql);
         
         Assert.Equal("Active", parameters["p0"]);
@@ -54,7 +52,6 @@ public class RqlBuilderTests
         var (rql, parameters) = RqlBuilder.Build(queryMap);
 
         // Assert
-        // Убран лишний "select *" перед limit
         Assert.Equal("from index 'Orders' where ('Total' >= $p0 and 'Total' <= $p1 or 'IsSpecial' = $p2) limit $p3, $p4", rql);
         Assert.Equal(10L, parameters["p0"]);
         Assert.Equal(100L, parameters["p1"]);
@@ -79,7 +76,6 @@ public class RqlBuilderTests
         var (rql, _) = RqlBuilder.Build(queryMap);
 
         // Assert
-        // Должен сгенерироваться ровно один "select facet(...)"
         Assert.Equal("from index 'Products' select facet('Category-Id') limit $p0, $p1", rql);
     }
 
@@ -95,7 +91,6 @@ public class RqlBuilderTests
         );
 
         // Act & Assert
-        // Проверяем нашу защиту уровня компиляции, которую мы добавили в BuildSelect
         var exception = Assert.Throws<InvalidOperationException>(() => RqlBuilder.Build(queryMap));
         Assert.Contains("Map-Reduce aggregations (Reduce) require a GroupBy clause", exception.Message);
     }
@@ -135,7 +130,6 @@ public class RqlBuilderTests
             ("From", new MapValue("Orders")),
             ("Where", DictionaryMap.New.With(
                 ("UpdatedAt", DictionaryMap.New.With(
-                    // Указываем оператор сравнения, а внутри него — модификатор поля
                     ("$eq", DictionaryMap.New.With(("$field", new MapValue("CreatedAt"))).AsMapValue())
                 ).AsMapValue())
             ).AsMapValue())
@@ -145,9 +139,8 @@ public class RqlBuilderTests
         var (rql, parameters) = RqlBuilder.Build(queryMap);
 
         // Assert
-        // Теперь выражение 'UpdatedAt' = 'CreatedAt' соберется идеально
         Assert.Equal("from index 'Orders' where 'UpdatedAt' = 'CreatedAt' limit $p0, $p1", rql);
-        Assert.False(parameters.ContainsKey("p2")); // Убеждаемся, что лишних параметров нет
+        Assert.False(parameters.ContainsKey("p2"));
     }
     
     [Fact]
@@ -158,7 +151,7 @@ public class RqlBuilderTests
             ("From", new MapValue("Users")),
             ("Where", DictionaryMap.New.With(
                 ("Id", DictionaryMap.New.With(
-                    ("$in", DictionaryMap.New.AsMapValue()) // Пустая мапа внутри $in
+                    ("$in", DictionaryMap.New.AsMapValue())
                 ).AsMapValue())
             ).AsMapValue())
         );
@@ -167,7 +160,6 @@ public class RqlBuilderTests
         var (rql, _) = RqlBuilder.Build(queryMap);
 
         // Assert
-        // Вместо падения или 'Id' in () генерируется безопасное ложное условие
         Assert.Equal("from index 'Users' where id() == null limit $p0, $p1", rql);
     }
     
@@ -208,5 +200,83 @@ public class RqlBuilderTests
 
         // Assert
         Assert.Equal("from index 'Metrics' timeseries('User''s-HeartRate') limit $p0, $p1", rql);
+    }
+    
+    [Fact]
+    public void Should_Build_Metadata_Filters_And_Wildcard_Search()
+    {
+        // Arrange
+        var queryMap = DictionaryMap.New.With(
+            ("From", new MapValue("Documents")),
+            ("Where", DictionaryMap.New.With(
+                ("@metadata/last-modified", DictionaryMap.New.With(("$gt", new MapValue("2026-01-01"))).AsMapValue()),
+                ("Title", DictionaryMap.New.With(
+                    ("$search", DictionaryMap.New.With(
+                        ("$term", new MapValue("Raven")),
+                        ("$options", DictionaryMap.New.With(("Wildcard", new MapValue(true))).AsMapValue())
+                    ).AsMapValue())
+                ).AsMapValue())
+            ).AsMapValue())
+        );
+
+        // Act
+        var (rql, parameters) = RqlBuilder.Build(queryMap);
+
+        // Assert
+        Assert.Equal("from index 'Documents' where metadata(this)['last-modified'] > $p0 and search('Title', $p1) limit $p2, $p3", rql);
+        Assert.Equal("2026-01-01", parameters["p0"]);
+        Assert.Equal("Raven*", parameters["p1"]);
+    }
+
+    [Fact]
+    public void Should_Build_Spatial_Wkt_And_Distance_Sorting()
+    {
+        // Arrange
+        var queryMap = DictionaryMap.New.With(
+            ("From", new MapValue("Stores")),
+            ("Spatial", DictionaryMap.New.With(
+                ("Field", new MapValue("Coordinates")),
+                ("$within", DictionaryMap.New.With(
+                    ("Wkt", new MapValue("POLYGON((0 0, 0 10, 10 10, 10 0, 0 0))")),
+                    ("Circle", DictionaryMap.New.With(
+                        ("Latitude", new MapValue(55.7M)),
+                        ("Longitude", new MapValue(37.6M))
+                    ).AsMapValue())
+                ).AsMapValue())
+            ).AsMapValue()),
+            ("OrderBy", DictionaryMap.New.With(
+                ("Order", DictionaryMap.New.With(("0", new MapValue("$spatialDistance"))).AsMapValue()),
+                ("Data", DictionaryMap.New.With(("$spatialDistance", new MapValue("Asc"))).AsMapValue())
+            ).AsMapValue())
+        );
+
+        // Act
+        var (rql, parameters) = RqlBuilder.Build(queryMap);
+
+        // Assert
+        Assert.Equal("from index 'Stores' where spatial.within('Coordinates', spatial.wkt($p0)) order by spatial.distance('Coordinates', spatial.point(55.7, 37.6)) limit $p1, $p2", rql);
+        Assert.Equal("POLYGON((0 0, 0 10, 10 10, 10 0, 0 0))", parameters["p0"]);
+    }
+
+    [Fact]
+    public void Should_Build_Server_Side_Select_Load()
+    {
+        // Arrange
+        var queryMap = DictionaryMap.New.With(
+            ("From", new MapValue("Orders")),
+            ("Select", DictionaryMap.New.With(
+                ("CompanyName", DictionaryMap.New.With(
+                    ("$load", DictionaryMap.New.With(
+                        ("Field", new MapValue("CompanyId")),
+                        ("Path", new MapValue("Name"))
+                    ).AsMapValue())
+                ).AsMapValue())
+            ).AsMapValue()));
+
+        // Act
+        var (rql, _) = RqlBuilder.Build(queryMap);
+
+        // Assert
+        Assert.Equal("from index 'Orders' select load('CompanyId').'Name' as 'CompanyName' limit $p0, $p1", rql);
     }
 }

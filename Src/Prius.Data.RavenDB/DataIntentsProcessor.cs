@@ -101,6 +101,7 @@ public sealed class DataIntentsProcessor(
     private static bool IsFatal(Exception ex) => ex switch
     {
         ArgumentException => true,
+        InvalidOperationException => true,
         ConcurrencyException => true,
         RavenException ravenEx when 
             ravenEx.Message.Contains("Syntax error") || 
@@ -147,14 +148,12 @@ public sealed class DataIntentsProcessor(
 
         using var session = holder.Store.OpenAsyncSession(new SessionOptions { NoTracking = true });
         
-        // Фабрика инициализации: общая часть для обоих типов запросов
         var query = session.Advanced.AsyncRawQuery<BlittableJsonReaderObject>(rql);
         foreach (var pair in parameters)
             query.AddParameter(pair.Key, pair.Value);
 
-        // Ветвление на основе декларативного дерева QueryMap
         var hasGroupBy = !i.QueryMap.Get("GroupBy").IsEmpty;
-        var hasFacets =  !i.QueryMap.Get("Facets").IsEmpty;
+        var hasFacets = !i.QueryMap.Get("Facets").IsEmpty;
 
         var result = (hasFacets && !hasGroupBy)
             ? await ExecuteFacetQuery(query, i.Token)
@@ -163,9 +162,8 @@ public sealed class DataIntentsProcessor(
         ReportSuccess(i, result.AsMapValue());
     }
 
-    private async Task<IMap> ExecuteFacetQuery(IAsyncRawDocumentQuery<BlittableJsonReaderObject> query, CancellationToken token)
+    private static async Task<IMap> ExecuteFacetQuery(IAsyncRawDocumentQuery<BlittableJsonReaderObject> query, CancellationToken token)
     {
-        // RavenDB SDK: Выполняем агрегацию для фасетов
         var facetResults = await query.ExecuteAggregationAsync(token);
         var facetsMap = DictionaryMap.New;
 
@@ -200,7 +198,6 @@ public sealed class DataIntentsProcessor(
 
     private async Task<IMap> ExecuteStandardQuery(IAsyncRawDocumentQuery<BlittableJsonReaderObject> query, CancellationToken token)
     {
-        // Стандартный сбор плоских документов
         var results = await query.ToListAsync(token);
         var items = DictionaryMap.New;
         var order = DictionaryMap.New;
@@ -210,7 +207,7 @@ public sealed class DataIntentsProcessor(
             var doc = results[idx];
             if (!doc.TryGet("@metadata", out BlittableJsonReaderObject metadata) || !metadata.TryGet("@id", out string id)) 
                 continue;
-            
+        
             items.Put(id, (await doc.AsJsonReaderMap()).AsMapValue());
             order.Put(idx.ToIndexString(), new MapValue(id));
         }

@@ -3,6 +3,7 @@ using Xunit;
 using Prius.Core.Maps;
 using Prius.Engine.Abstractions;
 using Raven.Client.Documents.Session;
+// ReSharper disable InconsistentNaming
 
 namespace Prius.Data.RavenDB.Tests;
 
@@ -15,6 +16,27 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             {
                 Maps = { "from user in docs.Users select new { user.Age }" },
                 Name = "Users/ByAge"
+            };
+    }
+    
+    private class Users_ByNotes : AbstractIndexCreationTask
+    {
+        public override IndexDefinition CreateIndexDefinition() =>
+            new()
+            {
+                Name = "Users/ByNotes",
+                Maps = { "from user in docs.Users select new { Notes = user.Notes }" },
+                Fields = new Dictionary<string, IndexFieldOptions>
+                {
+                    {
+                        "Notes", new IndexFieldOptions 
+                        { 
+                            Indexing = FieldIndexing.Search,
+                            Storage = FieldStorage.Yes,
+                            Analyzer = "StandardAnalyzer"
+                        }
+                    }
+                }
             };
     }
 
@@ -194,7 +216,7 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
 
         using (var session = store.OpenAsyncSession())
         {
-            for (int i = 1; i <= 5; i++)
+            for (var i = 1; i <= 5; i++)
                 await StoreUser(new { Age = 20 + i }, $"users/{i}", session);
             await session.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
@@ -272,6 +294,36 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             
             Assert.Equal(2, values.Keys().Count());
 
+            return Task.CompletedTask;
+        });
+    }
+    
+    [Fact]
+    public async Task ShouldQueryMapReduceWithValidation()
+    {
+        // Arrange
+        using var store = GetDocumentStore();
+        
+        var context = new MockReactorContext();
+        
+        var invalidQueryMap = DictionaryMap.New.With(
+            ("From", new MapValue("Sales")),
+            ("Reduce", DictionaryMap.New.With(
+                ("Total", DictionaryMap.New.With(("$sum", new MapValue("Amount"))).AsMapValue())
+            ).AsMapValue())
+        );
+
+        var provider = new MockDataIntentsProvider
+        {
+            Queries = [new QueryIntent(context, invalidQueryMap, "output/results", "failures/1", TestContext.Current.CancellationToken)]
+        };
+
+        // Act & Assert
+        await ExecuteTest(store, provider, () =>
+        {
+            Assert.False(context.PutCalls.ContainsKey("output/results"));
+            Assert.True(context.PutCalls.ContainsKey("failures/1"), "Should report architectural failure for invalid map-reduce");
+            
             return Task.CompletedTask;
         });
     }
