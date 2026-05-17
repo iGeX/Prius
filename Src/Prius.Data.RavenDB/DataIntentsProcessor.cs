@@ -1,4 +1,5 @@
 using System.Text;
+using Raven.Client.Exceptions;
 
 namespace Prius.Data.RavenDB;
 
@@ -100,7 +101,8 @@ public sealed class DataIntentsProcessor(
     private static bool IsFatal(Exception ex) => ex switch
     {
         ArgumentException => true,
-        Raven.Client.Exceptions.RavenException ravenEx when 
+        ConcurrencyException => true,
+        RavenException ravenEx when 
             ravenEx.Message.Contains("Syntax error") || 
             ravenEx.Message.Contains("Could not find field") ||
             ravenEx.Message.Contains("Unauthorized") => true,
@@ -211,13 +213,17 @@ public sealed class DataIntentsProcessor(
             return;
         }
         
-        logger.LogInformation("Attempting to store document with ID: {Id}", id.AsString());
+        if(logger.IsEnabled(LogLevel.Debug))
+            logger.LogDebug("Attempting to store document with ID: {Id}", id.AsString());
         using var session = holder.Store.OpenAsyncSession();
+        session.Advanced.UseOptimisticConcurrency = true;
         
-        var command = new PutCommandData(id, null, i.Document.ToDynamicJson());
+        var command = new PutCommandData(id, i.Document.DeepGet("@metadata/@change-vector").AsString(), i.Document.ToDynamicJson());
         session.Advanced.Defer(command);
         await session.SaveChangesAsync(i.Token);
-        logger.LogInformation("Successfully saved document with ID: {Id}", id.AsString());
+        
+        if(logger.IsEnabled(LogLevel.Debug))
+            logger.LogDebug("Successfully saved document with ID: {Id}", id.AsString());
     }
 
     private static void ReportFailure(StoreIntent i, string message, string type)
