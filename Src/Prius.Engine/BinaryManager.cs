@@ -20,17 +20,34 @@ public sealed class BinaryManager : IBinaryManager, IDisposable
     private readonly CancellationTokenSource _cts = new();
     private readonly ITimeProvider _timeProvider;
     private readonly TimeSpan _spillInterval;
+    private readonly long _maxMemory;
 
-    public BinaryManager(string? tempPath = null, ITimeProvider? timeProvider = null, TimeSpan? spillInterval = null)
+    public BinaryManager(string? tempPath = null, ITimeProvider? timeProvider = null, TimeSpan? spillInterval = null, long maxMemory = 10 * 1024 * 1024)
     {
         _tempPath = tempPath;
         _timeProvider = timeProvider ?? new DefaultTimeProvider();
         _spillInterval = spillInterval ?? TimeSpan.FromMinutes(1);
+        _maxMemory = maxMemory;
         
         if (!string.IsNullOrEmpty(_tempPath))
             Directory.CreateDirectory(_tempPath);
         
         Task.Run(() => SpillerLoop(_cts.Token));
+    }
+
+    private bool TryDeleteFile(Node node)
+    {
+        if (!node.TempFileId.HasValue || string.IsNullOrEmpty(_tempPath)) return true;
+
+        var path = Path.Combine(_tempPath, $"{node.TempFileId}.bin");
+        for (var i = 0; i < 3; i++)
+        {
+            try { File.Delete(path); return true; }
+            catch { Thread.Sleep(TimeSpan.FromMilliseconds(50 * Math.Pow(2, i))); }
+        }
+        
+        lock (node) { node.LastAccessed = _timeProvider.UtcNow; }
+        return false;
     }
 
     public void ForceSpill()
@@ -98,7 +115,9 @@ public sealed class BinaryManager : IBinaryManager, IDisposable
                         if (!string.IsNullOrEmpty(_tempPath))
                         {
                             var id = Guid.NewGuid();
-                            File.WriteAllBytes(Path.Combine(_tempPath, $"{id}.bin"), node.Data);
+                            try { File.WriteAllBytes(Path.Combine(_tempPath, $"{id}.bin"), node.Data); }
+                            catch { node.LastAccessed = _timeProvider.UtcNow; continue; }
+                            
                             node.TempFileId = id;
                             node.Data = null;
                         }
@@ -118,7 +137,8 @@ public sealed class BinaryManager : IBinaryManager, IDisposable
         {
             var ms = new MemoryStream();
             stream.CopyTo(ms);
-            var node = new Node { Metadata = metadata, Data = ms.ToArray(), LastAccessed = _timeProvider.UtcNow };
+            var data = ms.ToArray();
+            var node = new Node { Metadata = metadata, Data = data, LastAccessed = _timeProvider.UtcNow };
             
             _lock.EnterWriteLock();
             try { _nodes[path.ToString()] = node; }
@@ -128,20 +148,24 @@ public sealed class BinaryManager : IBinaryManager, IDisposable
 
     public void Delete(MapPath path)
     {
-        _lock.EnterWriteLock();
+        var key = path.ToString();
+        _lock.EnterReadLock();
         Node? node;
-        try { _nodes.Remove(path.ToString(), out node); }
-        finally { _lock.ExitWriteLock(); }
+        try { _nodes.TryGetValue(key, out node); }
+        finally { _lock.ExitReadLock(); }
 
-        if (node != null && node.TempFileId.HasValue && !string.IsNullOrEmpty(_tempPath))
-        {
-            try { File.Delete(Path.Combine(_tempPath, $"{node.TempFileId}.bin")); } catch { }
-        }
+        if (node == null) return;
+
+        if (!TryDeleteFile(node)) return;
+
+        _lock.EnterWriteLock();
+        try { _nodes.Remove(key); }
+        finally { _lock.ExitWriteLock(); }
     }
 
-    public IBinaryAccessor Get(MapPath path) => new Accessor(this, path.ToString(), _tempPath);
+    public IBinaryAccessor Get(MapPath path) => new Accessor(this, path.ToString(), _tempPath, _maxMemory);
 
-    private sealed class Accessor(BinaryManager manager, string path, string? tempPath) : IBinaryAccessor
+    private sealed class Accessor(BinaryManager manager, string path, string? tempPath, long maxMemory) : IBinaryAccessor
     {
         public MapValue Metadata
         {
@@ -176,8 +200,21 @@ public sealed class BinaryManager : IBinaryManager, IDisposable
             {
                 node.LastAccessed = manager._timeProvider.UtcNow;
                 if (node.Data != null) return new MemoryStream(node.Data);
+                
                 if (node.TempFileId.HasValue && !string.IsNullOrEmpty(tempPath))
-                    return File.OpenRead(Path.Combine(tempPath, $"{node.TempFileId}.bin"));
+                {
+                    var filePath = Path.Combine(tempPath, $"{node.TempFileId}.bin");
+                    var data = File.ReadAllBytes(filePath);
+                    
+                    if (data.Length <= maxMemory)
+                    {
+                        node.Data = data;
+                        manager.TryDeleteFile(node);
+                        node.TempFileId = null;
+                        return new MemoryStream(node.Data);
+                    }
+                    return File.OpenRead(filePath);
+                }
                 throw new InvalidOperationException("Binary data not available");
             }
         }
