@@ -39,8 +39,8 @@ public sealed class DataIntentsProcessor(
             ProcessLoop(provider.PopSubscription, HandleSubscription, ct)
         );
 
-    private Task ProcessLoop<T>(Func<CancellationToken, ValueTask<T>> popFunc, Func<T, Task> handler, CancellationToken ct) =>
-        Task.Run(async () =>
+    private async Task ProcessLoop<T>(Func<CancellationToken, ValueTask<T>> popFunc, Func<T, Task> handler, CancellationToken ct) =>
+        await Task.Factory.StartNew(async () => 
         {
             while (!ct.IsCancellationRequested)
             {
@@ -96,7 +96,7 @@ public sealed class DataIntentsProcessor(
                     }
                 }
             }
-        }, ct);
+        }, ct, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
     private static bool IsFatal(Exception ex) => ex switch
     {
