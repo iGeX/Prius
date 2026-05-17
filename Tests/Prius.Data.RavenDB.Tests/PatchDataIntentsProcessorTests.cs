@@ -1,6 +1,4 @@
-using Raven.Client.Documents;
 using Xunit;
-using Prius.Core.Maps;
 using Prius.Engine.Abstractions;
 using Newtonsoft.Json.Linq;
 
