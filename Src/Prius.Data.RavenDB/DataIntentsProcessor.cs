@@ -448,24 +448,25 @@ public sealed class DataIntentsProcessor(
     private async Task HandleGetAttachment(GetAttachmentIntent i)
     {
         using var session = holder.Store.OpenAsyncSession();
-        
+    
         using var attachmentResult = await session.Advanced.Attachments.GetAsync(i.DocumentId, i.Name, i.Token);
         if (attachmentResult == null)
         {
             ReportFailure(i, $"Attachment '{i.Name}' not found for document '{i.DocumentId}'", "NotFound");
             return;
         }
+        
+        var binaryPathStr = $"Attachments/{i.DocumentId}/{i.Name}";
+        var targetBinaryPath = new MapPath(binaryPathStr);
 
         var metadataMap = DictionaryMap.New.With(
             ("ContentType", new MapValue(attachmentResult.Details.ContentType)),
             ("Size", new MapValue(attachmentResult.Details.Size)),
             ("Hash", new MapValue(attachmentResult.Details.Hash))
         );
-
-        var targetBinaryPath = new MapPath(i.SuccessPath);
+        
         binaryManager.Store(targetBinaryPath, metadataMap.AsMapValue(), attachmentResult.Stream);
-            
-        ReportSuccess(i, true);
+        ReportSuccess(i, DictionaryMap.New.With(binaryPathStr, metadataMap.AsMapValue()).AsMapValue());
     }
 
     private async Task HandleDeleteAttachment(DeleteAttachmentIntent i)
