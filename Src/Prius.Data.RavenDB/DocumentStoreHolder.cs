@@ -5,7 +5,7 @@ using System.Security.Cryptography.X509Certificates;
 using Microsoft.Extensions.Logging;
 using Raven.Client.Documents;
 
-public sealed class DocumentStoreHolder : IDisposable
+public sealed class DocumentStoreHolder : IDocumentStoreHolder, IDisposable
 {
     private readonly Lock _sync = new();
     private readonly ILogger<DocumentStoreHolder> _logger;

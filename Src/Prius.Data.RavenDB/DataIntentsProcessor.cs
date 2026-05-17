@@ -15,7 +15,7 @@ using Engine.Abstractions;
 using Core.Maps;
 
 public sealed class DataIntentsProcessor(
-    DocumentStoreHolder holder,
+    IDocumentStoreHolder holder,
     IDataIntentsProvider provider,
     ILogger<DataIntentsProcessor> logger)
 {
@@ -38,63 +38,64 @@ public sealed class DataIntentsProcessor(
             ProcessLoop(provider.PopSubscription, HandleSubscription, ct)
         );
 
-    private async Task ProcessLoop<T>(Func<CancellationToken, ValueTask<T>> popFunc, Func<T, Task> handler, CancellationToken ct)
-    {
-        while (!ct.IsCancellationRequested)
+    private Task ProcessLoop<T>(Func<CancellationToken, ValueTask<T>> popFunc, Func<T, Task> handler, CancellationToken ct) =>
+        Task.Run(async () =>
         {
-            var intent = await popFunc(ct);
-            var retryCount = 0;
-
-            while (true)
+            while (!ct.IsCancellationRequested)
             {
-                try
+                var intent = await popFunc(ct);
+                var retryCount = 0;
+
+                while (true)
                 {
-                    await handler(intent);
-                    break;
-                }
-                catch (OperationCanceledException)
-                {
-                    if (logger.IsEnabled(LogLevel.Debug))
-                        logger.LogDebug("Intent {IntentType} was cancelled", intent?.GetType().Name);
-                    break;
-                }
-                catch (Exception ex) when (IsFatal(ex))
-                {
-                    if (intent is not null)
+                    try
                     {
-                        logger.LogError(ex, "Fatal error processing intent {IntentInfo}", GetFullIntentInfo(intent));
-                        RecordFailure(intent, ex);
+                        await handler(intent);
+                        break;
                     }
-                    break;
-                }
-                catch (Exception ex)
-                {
-                    retryCount++;
-                    if (retryCount >= MaxRetries)
+                    catch (OperationCanceledException)
+                    {
+                        if (logger.IsEnabled(LogLevel.Debug))
+                            logger.LogDebug("Intent {IntentType} was cancelled", intent?.GetType().Name);
+                        break;
+                    }
+                    catch (Exception ex) when (IsFatal(ex))
                     {
                         if (intent is not null)
                         {
-                            if (logger.IsEnabled(LogLevel.Debug))
-                            {
-                                logger.LogDebug(ex, "Failed to process intent {IntentInfo} after {RetryCount} retries",
-                                    GetFullIntentInfo(intent), MaxRetries);
-                            }
-
+                            logger.LogError(ex, "Fatal error processing intent {IntentInfo}", GetFullIntentInfo(intent));
                             RecordFailure(intent, ex);
                         }
-
                         break;
                     }
+                    catch (Exception ex)
+                    {
+                        retryCount++;
+                        if (retryCount >= MaxRetries)
+                        {
+                            if (intent is not null)
+                            {
+                                if (logger.IsEnabled(LogLevel.Debug))
+                                {
+                                    logger.LogDebug(ex, "Failed to process intent {IntentInfo} after {RetryCount} retries",
+                                        GetFullIntentInfo(intent), MaxRetries);
+                                }
 
-                    if (intent is not null && logger.IsEnabled(LogLevel.Trace))
-                        logger.LogTrace(ex, "Retry {RetryCount} for intent {IntentInfo}", retryCount, GetFullIntentInfo(intent));
+                                RecordFailure(intent, ex);
+                            }
 
-                    var delay = TimeSpan.FromMilliseconds(Math.Pow(2, retryCount) * 100);
-                    await Task.Delay(delay, ct);
+                            break;
+                        }
+
+                        if (intent is not null && logger.IsEnabled(LogLevel.Trace))
+                            logger.LogTrace(ex, "Retry {RetryCount} for intent {IntentInfo}", retryCount, GetFullIntentInfo(intent));
+
+                        var delay = TimeSpan.FromMilliseconds(Math.Pow(2, retryCount) * 100);
+                        await Task.Delay(delay, ct);
+                    }
                 }
             }
-        }
-    }
+        }, ct);
 
     private static bool IsFatal(Exception ex) => ex switch
     {
@@ -200,18 +201,31 @@ public sealed class DataIntentsProcessor(
         var id = i.Document.DeepGet("@metadata/@id");
         if (id.IsEmpty)
         {
-            var failureMap = DictionaryMap.New.With(
-                ("Message", "No @metadata/@id specified"), 
-                ("Type", "InvalidState"));
-            i.Context.Put(i.FailurePath, failureMap.AsMapValue());
+            ReportFailure(i, "No @metadata/@id specified", "InvalidState");
             return;
         }
         
+        if (i.Document.DeepGet("@metadata/@collection").IsEmpty)
+        {
+            ReportFailure(i, "No @metadata/@collection specified", "InvalidState");
+            return;
+        }
+        
+        logger.LogInformation("Attempting to store document with ID: {Id}", id.AsString());
         using var session = holder.Store.OpenAsyncSession();
         
         var command = new PutCommandData(id, null, i.Document.ToDynamicJson());
         session.Advanced.Defer(command);
         await session.SaveChangesAsync(i.Token);
+        logger.LogInformation("Successfully saved document with ID: {Id}", id.AsString());
+    }
+
+    private static void ReportFailure(StoreIntent i, string message, string type)
+    {
+        var failureMap = DictionaryMap.New.With(
+            ("Message", message), 
+            ("Type", type));
+        i.Context.Put(i.FailurePath, failureMap.AsMapValue());
     }
 
     private async Task HandlePatch(PatchIntent i)
