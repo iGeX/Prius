@@ -23,7 +23,7 @@ public static class RqlBuilder
         BuildFrom(sb, fromVal, queryMap.Get("TimeSeries").AsMap());
         BuildInclude(sb, queryMap.Get("Include").AsMap());
         BuildWhereAndSpatial(sb, queryMap, parameters);
-        BuildGroupByAndFacets(sb, queryMap, parameters);
+        BuildGroupByAndFacets(sb, queryMap);
         BuildOrderBy(sb, queryMap.Get("OrderBy").AsMap());
         BuildSelect(sb, queryMap.Get("Select"), queryMap.Get("Reduce").AsMap());
         BuildLimit(sb, queryMap.Get("Skip"), queryMap.Get("Take"), parameters);
@@ -95,7 +95,7 @@ public static class RqlBuilder
         sb.Append($"spatial.within({field}, spatial.circle(${pLat}, ${pLng}, ${pRad}))");
     }
 
-    private static void BuildGroupByAndFacets(StringBuilder sb, IMap queryMap, Dictionary<string, object> parameters)
+    private static void BuildGroupByAndFacets(StringBuilder sb, IMap queryMap)
     {
         var groupBy = queryMap.Get("GroupBy").AsMap();
         var facets = queryMap.Get("Facets").AsMap();
@@ -371,18 +371,35 @@ public static class RqlBuilder
             return;
         }
 
-        if (selectVal.IsMap)
+        if (selectVal.IsEmpty)
         {
-            var first = true;
-            foreach (var key in selectVal.AsMap().Keys())
-            {
-                if (!first)
-                    sb.Append(", ");
-                first = false;
-                sb.Append(NormalizePath(key));
-            }
-            sb.Append(' ');
+            sb.Append("* ");
+            return;
         }
+
+        if (!selectVal.IsMap)
+        {
+            sb.Append(selectVal.AsString()).Append(' ');
+            return;
+        }
+        
+    
+        var map = selectVal.AsMap();
+        var first1 = true;
+        foreach (var key in map.Keys())
+        {
+            if (!first1)
+                sb.Append(", ");
+            first1 = false;
+
+            var value = map.Get(key);
+            sb
+                .Append(NormalizePath(!value.IsString ? key :  value.AsString()))
+                .Append(" as ")
+                .Append(key)
+                .Append(' ');
+        }
+        sb.Append(' ');
     }
 
     private static void BuildReduceFunction(StringBuilder sb, string alias, IMap funcMap)
@@ -406,8 +423,20 @@ public static class RqlBuilder
 
     private static string NormalizePath(string path)
     {
-        if (string.IsNullOrEmpty(path))
-            return string.Empty;
-        return path.Replace('/', '.');
+        var mapPath = new MapPath(path);
+        var sb = new StringBuilder();
+        
+        var head = mapPath.Head;
+        while (!string.IsNullOrEmpty(head))
+        {
+            if (sb.Length > 0)
+                sb.Append('.');
+            sb.Append(head);
+
+            mapPath = mapPath.Tail;
+            head = mapPath.Head;
+        }
+        
+        return sb.ToString();
     }
 }

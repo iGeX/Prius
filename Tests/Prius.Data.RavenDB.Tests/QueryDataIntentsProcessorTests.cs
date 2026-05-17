@@ -2,6 +2,7 @@ using Raven.Client.Documents.Indexes;
 using Xunit;
 using Prius.Core.Maps;
 using Prius.Engine.Abstractions;
+using Raven.Client.Documents.Session;
 
 namespace Prius.Data.RavenDB.Tests;
 
@@ -9,14 +10,18 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
 {
     private class Users_ByAge : AbstractIndexCreationTask
     {
-        public override IndexDefinition CreateIndexDefinition()
-        {
-            return new IndexDefinition
+        public override IndexDefinition CreateIndexDefinition() =>
+            new()
             {
                 Maps = { "from user in docs.Users select new { user.Age }" },
                 Name = "Users/ByAge"
             };
-        }
+    }
+
+    private static async Task StoreUser(object user, string id, IAsyncDocumentSession session)
+    {
+        await session.StoreAsync(user, id, TestContext.Current.CancellationToken);
+        session.Advanced.GetMetadataFor(user)["@collection"] = "Users";
     }
 
     [Fact]
@@ -27,8 +32,8 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
 
         using (var session = store.OpenAsyncSession())
         {
-            await session.StoreAsync(new { Name = "John", Age = 30 }, "users/1", TestContext.Current.CancellationToken);
-            await session.StoreAsync(new { Name = "Jane", Age = 25 }, "users/2", TestContext.Current.CancellationToken);
+            await StoreUser(new { Name = "John", Age = 30 }, "users/1", session);
+            await StoreUser(new { Name = "Jane", Age = 25 }, "users/2", session);
             await session.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
@@ -69,9 +74,9 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
 
         using (var session = store.OpenAsyncSession())
         {
-            await session.StoreAsync(new { Name = "John", Age = 30 }, "users/1", TestContext.Current.CancellationToken);
-            await session.StoreAsync(new { Name = "Jane", Age = 25 }, "users/2", TestContext.Current.CancellationToken);
-            await session.StoreAsync(new { Name = "Bob", Age = 35 }, "users/3", TestContext.Current.CancellationToken);
+            await StoreUser(new { Name = "John", Age = 30 }, "users/1", session);
+            await StoreUser(new { Name = "Jane", Age = 25 }, "users/2", session);
+            await StoreUser(new { Name = "Bob", Age = 35 }, "users/3", session);
             await session.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
