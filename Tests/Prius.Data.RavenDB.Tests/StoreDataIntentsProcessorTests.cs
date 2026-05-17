@@ -1,6 +1,7 @@
 using Newtonsoft.Json.Linq;
 using Xunit;
 using Prius.Core.Maps;
+using Prius.Engine;
 using Prius.Engine.Abstractions;
 
 namespace Prius.Data.RavenDB.Tests;
@@ -48,26 +49,6 @@ public class StoreDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             Assert.NotNull(metadata);
             Assert.Equal(DocId, metadata["@id"]?.ToString());
             Assert.Equal(Collection, metadata["@collection"]?.ToString());
-        });
-    }
-
-    [Fact]
-    public async Task ShouldRecordFailure_WhenNoIdSpecified()
-    {
-        var context = new MockReactorContext();
-        var provider = new MockDataIntentsProvider
-        {
-            Stores = [new StoreIntent(context, DictionaryMap.New
-                .With("Name", "John"), "success/1","failures/1", TestContext.Current.CancellationToken)]
-        };
-
-        using var store = GetDocumentStore();
-        await ExecuteTest(store, provider, () =>
-        {
-            Assert.False(context.PutCalls.ContainsKey("success/1"));
-            Assert.True(context.PutCalls.ContainsKey("failures/1"));
-            Assert.Equal("No @metadata/@id specified", context.PutCalls["failures/1"].AsMap().Get("Message").AsString());
-            return Task.CompletedTask;
         });
     }
     
@@ -160,5 +141,90 @@ public class StoreDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             var metadata = session.Advanced.GetMetadataFor(await session.LoadAsync<dynamic>(DocId));
             Assert.Equal(expires.ToString("O"), metadata.GetString("@expires"));
         });
+    }
+    
+    [Fact]
+    public async Task Should_Dispose_Stream_After_StoreAttachment()
+    {
+        const string DocId = "docs/with-binary";
+        var context = new MockReactorContext();
+        
+        var spyStream = new SpyMemoryStream("binary content"u8.ToArray());
+        var provider = new MockDataIntentsProvider
+        {
+            StoreAttachments = [new StoreAttachmentIntent(context, DocId, "file.bin", spyStream, "application/octet-stream", "success", "failures", TestContext.Current.CancellationToken)]
+        };
+
+        using var store = GetDocumentStore();
+        
+        using (var session = store.OpenAsyncSession())
+        {
+            var doc = new { };
+            await session.StoreAsync(doc, DocId, TestContext.Current.CancellationToken);
+            session.Advanced.GetMetadataFor(doc)["@collection"] = "docs";
+            await session.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        await ExecuteTest(store, provider, () =>
+        {
+            Assert.True(context.PutCalls.ContainsKey("success"), "Intent should execute successfully and report to success path");
+            Assert.True(spyStream.IsDisposed, "The processor must call Dispose on the incoming intent stream!");
+            return Task.CompletedTask;
+        });
+    }
+
+    [Fact]
+    public async Task Should_Download_Attachment_And_Register_In_BinaryManager()
+    {
+        const string DocId = "docs/download-target";
+        const string AttachmentName = "invoice.pdf";
+        
+        using var store = GetDocumentStore();
+        
+        using (var session = store.OpenAsyncSession())
+        {
+            var doc = new { Title = "Report" };
+            await session.StoreAsync(doc, DocId, TestContext.Current.CancellationToken);
+            session.Advanced.GetMetadataFor(doc)["@collection"] = "docs";
+            
+            var testBytes = "PDF_DUMMY_CONTENT"u8.ToArray();
+            session.Advanced.Attachments.Store(DocId, AttachmentName, new MemoryStream(testBytes), "application/pdf");
+            await session.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        var context = new MockReactorContext();
+        var provider = new MockDataIntentsProvider
+        {
+            GetAttachments = [new GetAttachmentIntent(context, DocId, AttachmentName, "cache/binary/output", "failures", TestContext.Current.CancellationToken)]
+        };
+
+        var binaryManager = new BinaryManager();
+        await ExecuteTest(store, provider, binaryManager,() =>
+        {
+            Assert.True(context.PutCalls.ContainsKey("cache/binary/output"), "Intent should execute successfully and report to success path");
+            
+            var binaryPath = new MapPath("cache/binary/output");
+            var accessor = binaryManager.Get(binaryPath);
+            
+            Assert.True(accessor.Exists, "BinaryManager must contain the downloaded attachment!");
+            Assert.Equal("application/pdf", accessor.Metadata.AsMap().Get("ContentType").AsString());
+            
+            using var stream = accessor.OpenStream();
+            using var reader = new StreamReader(stream);
+            Assert.Equal("PDF_DUMMY_CONTENT", reader.ReadToEnd());
+
+            return Task.CompletedTask;
+        });
+    }
+
+    private sealed class SpyMemoryStream(byte[] buffer) : MemoryStream(buffer)
+    {
+        public bool IsDisposed { get; private set; }
+        
+        protected override void Dispose(bool disposing)
+        {
+            IsDisposed = true;
+            base.Dispose(disposing);
+        }
     }
 }

@@ -15,5 +15,6 @@
   
   <ItemGroup>
     <ProjectReference Include="..\..\Src\Prius.Data.RavenDB\Prius.Data.RavenDB.csproj" />
+    <ProjectReference Include="..\..\Src\Prius.Engine\Prius.Engine.csproj" />
   </ItemGroup>
 </Project>

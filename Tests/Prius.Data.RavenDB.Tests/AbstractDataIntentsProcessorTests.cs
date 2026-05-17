@@ -1,10 +1,7 @@
 using Raven.Client.Documents;
 using Raven.TestDriver;
-using Xunit;
 using Microsoft.Extensions.Logging.Abstractions;
-using Prius.Data.RavenDB;
-using Prius.Engine.Abstractions;
-using System.Threading.Channels;
+using Prius.Engine;
 
 namespace Prius.Data.RavenDB.Tests;
 
@@ -13,7 +10,7 @@ public abstract class AbstractDataIntentsProcessorTests : RavenTestDriver
     static AbstractDataIntentsProcessorTests() => 
         ConfigureServer(new TestServerOptions { Licensing = { ThrowOnInvalidOrMissingLicense = false } });
 
-    protected class TestDocumentStoreHolder(IDocumentStore store) : IDocumentStoreHolder
+    private class TestDocumentStoreHolder(IDocumentStore store) : IDocumentStoreHolder
     {
         public IDocumentStore Store => store;
     }
@@ -28,12 +25,15 @@ public abstract class AbstractDataIntentsProcessorTests : RavenTestDriver
             await Task.Delay(500, ct);
     }
 
-    protected static async Task ExecuteTest(IDocumentStore store, MockDataIntentsProvider provider, Func<Task> assertion)
+    protected static async Task ExecuteTest(IDocumentStore store, MockDataIntentsProvider provider, Func<Task> assertion) =>
+        await ExecuteTest(store, provider, new BinaryManager(), assertion);
+    
+    protected static async Task ExecuteTest(IDocumentStore store, MockDataIntentsProvider provider, BinaryManager binaryManager, Func<Task> assertion)
     {
         using var processorCt = new CancellationTokenSource();
         using var assertCt = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var holder = new TestDocumentStoreHolder(store);
-        var processor = new DataIntentsProcessor(holder, provider, NullLogger<DataIntentsProcessor>.Instance);
+        var processor = new DataIntentsProcessor(holder, provider, binaryManager, NullLogger<DataIntentsProcessor>.Instance);
         
         var task = processor.StartAsync(processorCt.Token);
         await WaitForCompletion(provider, assertCt.Token);

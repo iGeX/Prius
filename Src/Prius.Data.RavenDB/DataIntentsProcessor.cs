@@ -1,9 +1,11 @@
 using System.Text;
+using Raven.Client.Documents.Subscriptions;
 using Raven.Client.Exceptions;
 
 namespace Prius.Data.RavenDB;
 
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -18,6 +20,7 @@ using Core.Maps;
 public sealed class DataIntentsProcessor(
     IDocumentStoreHolder holder,
     IDataIntentsProvider provider,
+    IBinaryManager binaryManager,
     ILogger<DataIntentsProcessor> logger)
 {
     private const int MaxRetries = 3;
@@ -84,7 +87,6 @@ public sealed class DataIntentsProcessor(
 
                                 ReportFailure(ii, ex);
                             }
-
                             break;
                         }
 
@@ -274,7 +276,7 @@ public sealed class DataIntentsProcessor(
             ("Highlights", highlightsMap.AsMapValue())
         );
     }
-    
+
     private async Task HandleLoad(LoadIntent i)
     {
         using var session = holder.Store.OpenAsyncSession(new SessionOptions { NoTracking = true });
@@ -306,13 +308,6 @@ public sealed class DataIntentsProcessor(
 
     private async Task HandleStore(StoreIntent i)
     {
-        var id = i.Document.DeepGet("@metadata/@id");
-        if (id.IsEmpty)
-        {
-            ReportFailure(i, "No @metadata/@id specified", "InvalidState");
-            return;
-        }
-        
         if (i.Document.DeepGet("@metadata/@collection").IsEmpty)
         {
             ReportFailure(i, "No @metadata/@collection specified", "InvalidState");
@@ -320,16 +315,19 @@ public sealed class DataIntentsProcessor(
         }
         
         if(logger.IsEnabled(LogLevel.Debug))
-            logger.LogDebug("Attempting to store document with ID: {Id}", id.AsString());
+            logger.LogDebug("Attempting to store document: {Id}", i.Document.Serialize());
+            
         using var session = holder.Store.OpenAsyncSession();
         session.Advanced.UseOptimisticConcurrency = true;
         
-        var command = new PutCommandData(id, i.Document.DeepGet("@metadata/@change-vector").AsString(), i.Document.AsDynamicJson());
+        var changeVector = i.Document.DeepGet("@metadata/@change-vector").AsString();
+        var command = new PutCommandData(i.Document.DeepGet("@metadata/@id").AsString(), changeVector, i.Document.AsDynamicJson());
         session.Advanced.Defer(command);
+        
         await session.SaveChangesAsync(i.Token);
         
         if(logger.IsEnabled(LogLevel.Debug))
-            logger.LogDebug("Successfully saved document with ID: {Id}", id.AsString());
+            logger.LogDebug("Successfully saved document: {Id}", i.Document.Serialize());
         
         ReportSuccess(i, true);
     }
@@ -338,12 +336,13 @@ public sealed class DataIntentsProcessor(
     {
         using var session = holder.Store.OpenAsyncSession();
         
-        session.Advanced.Defer(new PatchCommandData(i.DocumentId, null, CreatePatchRequest(i.Path, i.Value)));
+        var (script, values) = CreatePatchRequest(i.Path, i.Value);
+        session.Advanced.Defer(new PatchCommandData(i.DocumentId, null, new PatchRequest { Script = script, Values = values }));
         await session.SaveChangesAsync(i.Token);
         ReportSuccess(i, true);
     }
-    
-    private static PatchRequest CreatePatchRequest(MapPath path, MapValue value)
+
+    private static (string Script, Dictionary<string, object> Values) CreatePatchRequest(MapPath path, MapValue value)
     {
         var values = new Dictionary<string, object> 
         { 
@@ -355,25 +354,22 @@ public sealed class DataIntentsProcessor(
         };
 
         if (path.IsEmpty)
-        {
-            return new PatchRequest
-            {
-                Script = "Object.assign(this, args.Val);",
-                Values = values
-            };
-        }
+            return ("Object.assign(this, args.Val);", values);
 
         var scriptBuilder = new StringBuilder();
         var currentPath = new StringBuilder("this");
         var remainingPath = path;
+        var pIdx = 0;
 
         while (!remainingPath.IsEmpty)
         {
             var segment = remainingPath.Head;
             remainingPath = remainingPath.Tail;
 
-            var escapedSegment = segment.Replace("'", "\\'");
-            currentPath.Append("['").Append(escapedSegment).Append("']");
+            var pName = $"p_{pIdx++}";
+            values[pName] = segment;
+
+            currentPath.Append("[args.").Append(pName).Append("]");
 
             if (!remainingPath.IsEmpty)
             {
@@ -384,11 +380,7 @@ public sealed class DataIntentsProcessor(
             scriptBuilder.Append(currentPath).Append(" = args.Val;");
         }
 
-        return new PatchRequest
-        {
-            Script = scriptBuilder.ToString(),
-            Values = values
-        };
+        return (scriptBuilder.ToString(), values);
     }
     
     private async Task HandleIncrement(IncrementIntent i)
@@ -444,15 +436,36 @@ public sealed class DataIntentsProcessor(
 
     private async Task HandleStoreAttachment(StoreAttachmentIntent i)
     {
-        using var session = holder.Store.OpenAsyncSession();
-        session.Advanced.Attachments.Store(i.DocumentId, i.Name, i.Stream, i.ContentType);
-        await session.SaveChangesAsync(i.Token);
-        ReportSuccess(i, true);
+        await using (i.Stream)
+        {
+            using var session = holder.Store.OpenAsyncSession();
+            session.Advanced.Attachments.Store(i.DocumentId, i.Name, i.Stream, i.ContentType);
+            await session.SaveChangesAsync(i.Token);
+            ReportSuccess(i, true);
+        }
     }
 
     private async Task HandleGetAttachment(GetAttachmentIntent i)
     {
-        //TODO
+        using var session = holder.Store.OpenAsyncSession();
+        
+        using var attachmentResult = await session.Advanced.Attachments.GetAsync(i.DocumentId, i.Name, i.Token);
+        if (attachmentResult == null)
+        {
+            ReportFailure(i, $"Attachment '{i.Name}' not found for document '{i.DocumentId}'", "NotFound");
+            return;
+        }
+
+        var metadataMap = DictionaryMap.New.With(
+            ("ContentType", new MapValue(attachmentResult.Details.ContentType)),
+            ("Size", new MapValue(attachmentResult.Details.Size)),
+            ("Hash", new MapValue(attachmentResult.Details.Hash))
+        );
+
+        var targetBinaryPath = new MapPath(i.SuccessPath);
+        binaryManager.Store(targetBinaryPath, metadataMap.AsMapValue(), attachmentResult.Stream);
+            
+        ReportSuccess(i, true);
     }
 
     private async Task HandleDeleteAttachment(DeleteAttachmentIntent i)
@@ -467,6 +480,19 @@ public sealed class DataIntentsProcessor(
     
     private async Task HandleSubscription(SubscriptionIntent i)
     {
-        //TODO
+        var options = new SubscriptionWorkerOptions(i.TopicName)
+        {
+            Strategy = SubscriptionOpeningStrategy.WaitForFree
+        };
+
+        await using var worker = holder.Store.Subscriptions.GetSubscriptionWorker<BlittableJsonReaderObject>(options);
+        await worker.Run(async batch =>
+        {
+            foreach (var item in batch.Items)
+            {
+                var map = await item.Result.AsJsonReaderMap();
+                i.Context.Put($"{i.SubscriptionPath}/{item.Id}", map.AsMapValue());
+            }
+        }, i.Token);
     }
 }
