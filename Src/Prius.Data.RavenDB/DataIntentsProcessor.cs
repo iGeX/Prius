@@ -172,7 +172,7 @@ public sealed class DataIntentsProcessor(
             ("Order", order.AsMapValue())
         );
 
-        i.Context.Put(i.SuccessPath, result.AsMapValue());
+        ReportSuccess(i, result.AsMapValue());
     }
     
     private async Task HandleLoad(LoadIntent i)
@@ -187,12 +187,13 @@ public sealed class DataIntentsProcessor(
         }
 
         var map = await doc.AsJsonReaderMap();
-        i.Context.Put(i.SuccessPath, map.AsMapValue());
+        ReportSuccess(i, map.AsMapValue());
     }
 
     private async Task HandleDelete(DeleteIntent i)
     {
         using var session = holder.Store.OpenAsyncSession();
+        session.Advanced.UseOptimisticConcurrency = true;
 
         if (!string.IsNullOrEmpty(i.ChangeVector))
             session.Advanced.Defer(new DeleteCommandData(i.DocumentId, i.ChangeVector));
@@ -200,6 +201,7 @@ public sealed class DataIntentsProcessor(
             session.Delete(i.DocumentId);
 
         await session.SaveChangesAsync(i.Token);
+        ReportSuccess(i, true);
     }
 
     private async Task HandleStore(StoreIntent i)
@@ -238,6 +240,7 @@ public sealed class DataIntentsProcessor(
         
         session.Advanced.Defer(new PatchCommandData(i.DocumentId, null, CreatePatchRequest(i.Path, i.Value)));
         await session.SaveChangesAsync(i.Token);
+        ReportSuccess(i, true);
     }
     
     private static PatchRequest CreatePatchRequest(MapPath path, MapValue value)
@@ -293,6 +296,7 @@ public sealed class DataIntentsProcessor(
         using var session = holder.Store.OpenAsyncSession();
         session.CountersFor(i.DocumentId).Increment(i.CounterName, i.Delta);
         await session.SaveChangesAsync(i.Token);
+        ReportSuccess(i, true);
     }
 
     private async Task HandleGetCounters(GetCountersIntent i)
@@ -343,6 +347,7 @@ public sealed class DataIntentsProcessor(
         using var session = holder.Store.OpenAsyncSession();
         session.Advanced.Attachments.Store(i.DocumentId, i.Name, i.Stream, i.ContentType);
         await session.SaveChangesAsync(i.Token);
+        ReportSuccess(i, true);
     }
 
     private async Task HandleGetAttachment(GetAttachmentIntent i)
@@ -355,6 +360,7 @@ public sealed class DataIntentsProcessor(
         using var session = holder.Store.OpenAsyncSession();
         session.Advanced.Attachments.Delete(i.DocumentId, i.Name);
         await session.SaveChangesAsync(i.Token);
+        ReportSuccess(i, true);
     }
 
     private async Task HandleNative(NativeIntent i) => await i.Action(holder.Store, i);

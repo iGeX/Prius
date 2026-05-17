@@ -37,6 +37,38 @@ public class LoadDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
     }
 
     [Fact]
+    public async Task ShouldLoadComplexDocument()
+    {
+        const string DocId = "docs/complex";
+        using var store = GetDocumentStore();
+        
+        using (var session = store.OpenAsyncSession())
+        {
+            await session.StoreAsync(new { 
+                Name = "John", 
+                Address = new { City = "Moscow", Zip = 123456 } 
+            }, DocId, TestContext.Current.CancellationToken);
+            await session.SaveChangesAsync(TestContext.Current.CancellationToken);
+        }
+
+        var context = new MockReactorContext();
+        var provider = new MockDataIntentsProvider
+        {
+            Loads = [new LoadIntent(context, DocId, "output/user", "failures/1", TestContext.Current.CancellationToken)]
+        };
+
+        await ExecuteTest(store, provider, () =>
+        {
+            Assert.True(context.PutCalls.ContainsKey("output/user"));
+            var loadedMap = context.PutCalls["output/user"].AsMap();
+            Assert.Equal("John", loadedMap.Get("Name").AsString());
+            Assert.Equal("Moscow", loadedMap.Get("Address").AsMap().Get("City").AsString());
+            Assert.Equal(123456L, loadedMap.Get("Address").AsMap().Get("Zip").AsLong());
+            return Task.CompletedTask;
+        });
+    }
+
+    [Fact]
     public async Task ShouldPutFailure_WhenDocumentMissing()
     {
         const string DocId = "nonexistent/1";
@@ -52,6 +84,7 @@ public class LoadDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         {
             Assert.False(context.PutCalls.ContainsKey("output/user"));
             Assert.True(context.PutCalls.ContainsKey("failures/1"));
+            Assert.Contains("Document not found", context.PutCalls["failures/1"].AsMap().Get("Message").AsString());
             return Task.CompletedTask;
         });
     }
