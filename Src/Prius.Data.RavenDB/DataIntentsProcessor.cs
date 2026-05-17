@@ -1,6 +1,6 @@
 using System.Text;
-using Raven.Client.Documents.Subscriptions;
 using Raven.Client.Exceptions;
+using Raven.Client.Documents.Subscriptions;
 
 namespace Prius.Data.RavenDB;
 
@@ -314,7 +314,7 @@ public sealed class DataIntentsProcessor(
             return;
         }
         
-        if(logger.IsEnabled(LogLevel.Debug))
+        if (logger.IsEnabled(LogLevel.Debug))
             logger.LogDebug("Attempting to store document: {Id}", i.Document.Serialize());
             
         using var session = holder.Store.OpenAsyncSession();
@@ -326,7 +326,7 @@ public sealed class DataIntentsProcessor(
         
         await session.SaveChangesAsync(i.Token);
         
-        if(logger.IsEnabled(LogLevel.Debug))
+        if (logger.IsEnabled(LogLevel.Debug))
             logger.LogDebug("Successfully saved document: {Id}", i.Document.Serialize());
         
         ReportSuccess(i, true);
@@ -411,10 +411,10 @@ public sealed class DataIntentsProcessor(
         await holder.Store.GetRequestExecutor().ExecuteAsync(command, context);
         
         if (command.Result.Results is null || 
-                command.Result.Results.Length == 0 ||
-                command.Result.Results[0] is not BlittableJsonReaderObject doc ||
-                !doc.TryGet("@metadata", out BlittableJsonReaderObject metadata) || 
-                !metadata.TryGet("@attachments", out BlittableJsonReaderArray attachments))
+            command.Result.Results.Length == 0 ||
+            command.Result.Results[0] is not BlittableJsonReaderObject doc ||
+            !doc.TryGet("@metadata", out BlittableJsonReaderObject metadata) || 
+            !metadata.TryGet("@attachments", out BlittableJsonReaderArray attachments))
         {
             ReportSuccess(i, new MapValue());
             return;
@@ -478,21 +478,41 @@ public sealed class DataIntentsProcessor(
 
     private async Task HandleNative(NativeIntent i) => await i.Action(holder.Store, i);
     
-    private async Task HandleSubscription(SubscriptionIntent i)
+    private Task HandleSubscription(SubscriptionIntent i)
     {
-        var options = new SubscriptionWorkerOptions(i.TopicName)
+        try
         {
-            Strategy = SubscriptionOpeningStrategy.WaitForFree
-        };
-
-        await using var worker = holder.Store.Subscriptions.GetSubscriptionWorker<BlittableJsonReaderObject>(options);
-        await worker.Run(async batch =>
-        {
-            foreach (var item in batch.Items)
+            var options = new SubscriptionWorkerOptions(i.TopicName)
             {
-                var map = await item.Result.AsJsonReaderMap();
-                i.Context.Put($"{i.SubscriptionPath}/{item.Id}", map.AsMapValue());
-            }
-        }, i.Token);
+                Strategy = SubscriptionOpeningStrategy.WaitForFree
+            };
+            
+            _ = Task.Factory.StartNew(async () =>
+            {
+                try
+                {
+                    await using var worker = holder.Store.Subscriptions.GetSubscriptionWorker<BlittableJsonReaderObject>(options);
+                    await worker.Run(async batch =>
+                    {
+                        foreach (var item in batch.Items)
+                        {
+                            var map = await item.Result.AsJsonReaderMap();
+                            i.Context.Put($"{i.SubscriptionPath}/{item.Id}", map.AsMapValue());
+                        }
+                    }, i.Token);
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Subscription worker failed for topic {Topic}", i.TopicName);
+                }
+            }, i.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+
+            ReportSuccess(i, true);
+            return Task.CompletedTask;
+        }
+        catch (Exception exception)
+        {
+            return Task.FromException(exception);
+        }
     }
 }
