@@ -114,7 +114,7 @@ public sealed class Bootstrap
                 continue;
             }
 
-            var hash = val.AsMap()["hash"].AsString();
+            var hash = val["hash"].AsString();
             if (string.IsNullOrEmpty(hash))
                 continue;
 
@@ -150,7 +150,7 @@ public sealed class Bootstrap
                 continue;
 
             var currentPath = Path.Combine(relativePath, key);
-            var hash = val.AsMap()["hash"].AsString();
+            var hash = val["hash"].AsString();
 
             if (string.IsNullOrEmpty(hash))
             {

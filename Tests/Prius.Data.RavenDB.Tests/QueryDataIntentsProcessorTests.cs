@@ -114,7 +114,7 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
 
             Assert.Equal(1L, items.Keys().Count());
             Assert.False(items["users/1"].IsEmpty);
-            Assert.Equal("John", items["users/1"].AsMap()["Name"].AsString());
+            Assert.Equal("John", items["users/1"]["Name"].AsString());
             Assert.Equal("users/1", order["0"].AsString());
             
             return Task.CompletedTask;

@@ -243,10 +243,10 @@ public static class RqlBuilder
                     sb.Append(val.AsValue<bool>() ? ") = true" : ") = false");
                     break;
                 case "$between":
-                    var fromVal = val.AsMap()["$from"];
-                    var toVal = val.AsMap()["$to"];
-                    var incFrom = val.AsMap()["$includeFrom"].IsEmpty || val.AsMap()["$includeFrom"].AsValue<bool>();
-                    var incTo = val.AsMap()["$includeTo"].IsEmpty || val.AsMap()["$includeTo"].AsValue<bool>();
+                    var fromVal = val["$from"];
+                    var toVal = val["$to"];
+                    var incFrom = val["$includeFrom"].IsEmpty || val["$includeFrom"].AsValue<bool>();
+                    var incTo = val["$includeTo"].IsEmpty || val["$includeTo"].AsValue<bool>();
 
                     AppendConstraint(sb, field, incFrom ? ">=" : ">", fromVal, parameters);
                     sb.Append(" and ");
@@ -277,8 +277,8 @@ public static class RqlBuilder
                     sb.Append(')');
                     break;
                 case "$search":
-                    var term = val.AsMap()["$term"].AsString();
-                    var options = val.AsMap()["$options"].AsMap();
+                    var term = val["$term"].AsString();
+                    var options = val["$options"].AsMap();
                     var searchOp = options["Operator"].IsEmpty ? "OR" : options["Operator"].AsString();
                     var boost = options["Boost"];
                     var wildcard = !options["Wildcard"].IsEmpty && options["Wildcard"].AsValue<bool>();
@@ -312,9 +312,9 @@ public static class RqlBuilder
         sb.Append(op);
         sb.Append(' ');
 
-        if (val.IsMap && !val.AsMap()["$field"].IsEmpty)
+        if (val.IsMap && !val["$field"].IsEmpty)
         {
-            sb.Append(NormalizePath(val.AsMap()["$field"].AsString()));
+            sb.Append(NormalizePath(val["$field"].AsString()));
             return;
         }
 
@@ -346,7 +346,7 @@ public static class RqlBuilder
             if (fieldKey == "$spatialDistance")
             {
                 var field = NormalizePath(spatialMap["Field"].AsString());
-                var circle = spatialMap["$within"].AsMap()["Circle"].AsMap();
+                var circle = spatialMap["$within"]["Circle"].AsMap();
                 sb.Append($"spatial.distance({field}, spatial.point({circle["Latitude"].AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture)}, {circle["Longitude"].AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture)}))");
             }
             else
@@ -388,10 +388,10 @@ public static class RqlBuilder
 
         sb.Append("select ");
 
-        if (selectVal.IsMap && !selectVal.AsMap()["$js"].IsEmpty)
+        if (selectVal.IsMap && !selectVal["$js"].IsEmpty)
         {
             sb.Append('{');
-            sb.Append(selectVal.AsMap()["$js"].AsString());
+            sb.Append(selectVal["$js"].AsString());
             sb.Append('}');
             sb.Append(' ');
             return;
@@ -439,9 +439,9 @@ public static class RqlBuilder
             var value = map[key];
             var escapedAlias = $"'{key.Replace("'", "''")}'";
 
-            if (value.IsMap && !value.AsMap()["$load"].IsEmpty)
+            if (value.IsMap && !value["$load"].IsEmpty)
             {
-                var loadMap = value.AsMap()["$load"].AsMap();
+                var loadMap = value["$load"].AsMap();
                 var targetField = NormalizePath(loadMap["Field"].AsString());
                 var pathInTarget = NormalizePath(loadMap["Path"].AsString());
                 sb.Append($"load({targetField}).{pathInTarget} as {escapedAlias}");

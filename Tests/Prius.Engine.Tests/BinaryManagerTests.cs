@@ -39,7 +39,7 @@ public sealed class BinaryManagerTests : IDisposable
 
         var accessor = manager.Get("path/1");
         Assert.True(accessor.Exists);
-        Assert.Equal("text", accessor.Metadata.AsMap()["Type"].AsString());
+        Assert.Equal("text", accessor.Metadata["Type"].AsString());
 
         using (var stream = accessor.OpenStream())
         using (var reader = new StreamReader(stream))

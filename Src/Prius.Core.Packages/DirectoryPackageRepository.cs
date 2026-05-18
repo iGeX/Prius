@@ -150,7 +150,7 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
 
             foreach (var tfm in map["Dependencies"].AsMap().Keys())
                 foundTfms.Add(tfm);
-            foreach (var tfm in map["Assets"].AsMap()["lib"].AsMap().Keys())
+            foreach (var tfm in map["Assets"]["lib"].AsMap().Keys())
                 foundTfms.Add(tfm);
 
             if (foundTfms.Count == 0)

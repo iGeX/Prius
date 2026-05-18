@@ -81,7 +81,7 @@ public static class PackagesRegistryExtensions
                 {
                     var tfmDeps = manifest.Get("Dependencies/" + tfm).AsMap();
                     return new DependencyGroupDto(tfm, tfmDeps.Keys().Select(depId => 
-                        new DependencyDto(depId, tfmDeps[depId].AsMap()["version"].AsValue<string>())
+                        new DependencyDto(depId, tfmDeps[depId]["version"].AsValue<string>())
                     ).ToList());
                 }).ToList();
 

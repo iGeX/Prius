@@ -254,7 +254,7 @@ public sealed class DataIntentsProcessor(
         
         if (!queryMap["Highlight"].IsEmpty && queryResult.Highlightings != null)
         {
-            var originalField = queryMap["Highlight"].AsMap()["Field"].AsString();
+            var originalField = queryMap["Highlight"]["Field"].AsString();
             if (queryResult.Highlightings.TryGetValue(originalField, out var docsWithHighlights))
             {
                 foreach (var pair in docsWithHighlights)

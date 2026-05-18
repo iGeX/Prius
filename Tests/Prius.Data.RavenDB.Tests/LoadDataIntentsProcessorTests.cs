@@ -62,8 +62,8 @@ public class LoadDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             Assert.True(context.PutCalls.ContainsKey("output/user"));
             var loadedMap = context.PutCalls["output/user"].AsMap();
             Assert.Equal("John", loadedMap["Name"].AsString());
-            Assert.Equal("Moscow", loadedMap["Address"].AsMap()["City"].AsString());
-            Assert.Equal(123456L, loadedMap["Address"].AsMap()["Zip"].AsLong());
+            Assert.Equal("Moscow", loadedMap["Address"]["City"].AsString());
+            Assert.Equal(123456L, loadedMap["Address"]["Zip"].AsLong());
             return Task.CompletedTask;
         });
     }
@@ -84,7 +84,7 @@ public class LoadDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         {
             Assert.False(context.PutCalls.ContainsKey("output/user"));
             Assert.True(context.PutCalls.ContainsKey("failures/1"));
-            Assert.Contains("Document not found", context.PutCalls["failures/1"].AsMap()["Message"].AsString());
+            Assert.Contains("Document not found", context.PutCalls["failures/1"]["Message"].AsString());
             return Task.CompletedTask;
         });
     }

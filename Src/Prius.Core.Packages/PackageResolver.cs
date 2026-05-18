@@ -56,7 +56,7 @@ public sealed class PackageResolver(IPackageRepository repository)
                 
                 var deps = GetCompatibleDeps(manifest, tfm);
                 foreach (var depId in deps.Keys())
-                    nextQueue[depId] = deps[depId].AsMap()["version"].AsString();
+                    nextQueue[depId] = deps[depId]["version"].AsString();
             }
             queue = nextQueue;
         }
