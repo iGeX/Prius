@@ -455,7 +455,7 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             // Assert
             if (context.PutCalls.ContainsKey("failures/1"))
             {
-                var failureReason = context.PutCalls["failures/1"].AsMap().Serialize();
+                var failureReason = context.PutCalls["failures/1"].Serialize();
                 Assert.Fail("Query failed with exception: " + failureReason);
             }
 
@@ -520,7 +520,7 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         {
             if (context.PutCalls.ContainsKey("failures/1"))
             {
-                var failureReason = context.PutCalls["failures/1"].AsMap().Serialize();
+                var failureReason = context.PutCalls["failures/1"].Serialize();
                 Assert.Fail("Map-Reduce query failed: " + failureReason);
             }
 
@@ -586,7 +586,7 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             // Assert
             if (context.PutCalls.TryGetValue("failures/1", out var value))
             {
-                var failureReason = value.AsMap().Serialize();
+                var failureReason = value.Serialize();
                 Assert.Fail("Spatial query failed: " + failureReason);
             }
 

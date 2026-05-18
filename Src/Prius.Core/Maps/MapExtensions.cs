@@ -364,6 +364,12 @@ public static class MapExtensions
         map.Serialize(stream);
         return Encoding.UTF8.GetString(stream.GetBuffer(), 0, (int)stream.Length);
     }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static string Serialize(this MapValue value) => value.Match(
+        _ => string.Empty,
+        map => map.Serialize(),
+        val => val.ToString());  
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void DoSerialize(IMap map, Utf8JsonWriter writer)
