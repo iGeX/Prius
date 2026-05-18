@@ -135,8 +135,10 @@ public sealed class DataIntentsProcessor(
     private static void ReportFailure(IIntent i, string message, string type)
     {
         var failureMap = DictionaryMap.New.With(
+        [
             ("Message", message), 
-            ("Type", type));
+            ("Type", type)
+        ]);
         i.Context.Put(i.FailurePath, failureMap.AsMapValue());
     }
 
@@ -176,26 +178,29 @@ public sealed class DataIntentsProcessor(
             {
                 var item = pair.Value.Values[idx];
                 var itemMap = DictionaryMap.New.With(
+                [
                     ("Range", new MapValue(item.Range)),
                     ("Count", new MapValue(item.Count))
-                );
+                ]);
                 valuesList[idx.ToIndexString()] = itemMap.AsMapValue();
             }
 
             var facetData = DictionaryMap.New.With(
+            [
                 ("Name", new MapValue(pair.Key)),
                 ("Values", valuesList.AsMapValue())
-            );
+            ]);
 
             facetsMap[pair.Key] = facetData.AsMapValue();
         }
 
         return DictionaryMap.New.With(
+        [
             ("Items", DictionaryMap.New.AsMapValue()), 
             ("Includes", DictionaryMap.New.AsMapValue()), 
             ("Order", DictionaryMap.New.AsMapValue()),
             ("Facets", facetsMap.AsMapValue()) 
-        );
+        ]);
     }
 
     private static async Task<IMap> ExecuteStandardQuery(IAsyncRawDocumentQuery<BlittableJsonReaderObject> query, CancellationToken token, IMap queryMap)
@@ -270,11 +275,12 @@ public sealed class DataIntentsProcessor(
         }
 
         return DictionaryMap.New.With(
+        [
             ("Items", items.AsMapValue()),
             ("Includes", includesMap.AsMapValue()), 
             ("Order", order.AsMapValue()),
             ("Highlights", highlightsMap.AsMapValue())
-        );
+        ]);
     }
 
     private async Task HandleLoad(LoadIntent i)
@@ -460,10 +466,11 @@ public sealed class DataIntentsProcessor(
         var targetBinaryPath = new MapPath(binaryPathStr);
 
         var metadataMap = DictionaryMap.New.With(
+        [
             ("ContentType", new MapValue(attachmentResult.Details.ContentType)),
             ("Size", new MapValue(attachmentResult.Details.Size)),
             ("Hash", new MapValue(attachmentResult.Details.Hash))
-        );
+        ]);
         
         binaryManager.Store(targetBinaryPath, metadataMap.AsMapValue(), attachmentResult.Stream);
         ReportSuccess(i, DictionaryMap.New.With(binaryPathStr, metadataMap.AsMapValue()).AsMapValue());

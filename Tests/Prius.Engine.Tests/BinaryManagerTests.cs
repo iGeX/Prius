@@ -29,7 +29,7 @@ public sealed class BinaryManagerTests : IDisposable
     public void ShouldStoreAndRetrieveBinaryData()
     {
         var manager = new BinaryManager(_tempDir);
-        var content = Encoding.UTF8.GetBytes("hello world");
+        var content = "hello world"u8.ToArray();
         var metadata = DictionaryMap.New.With("Type", "text").AsMapValue();
         
         using (var stream = new MemoryStream(content))

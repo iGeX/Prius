@@ -16,15 +16,20 @@ public class StoreDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         var context = new MockReactorContext();
         var provider = new MockDataIntentsProvider
         {
-            Stores = [new StoreIntent(context, DictionaryMap.New
-                .With("Name", "John")
-                .With("Age", 30)
-                .With("Address", DictionaryMap.New
-                    .With("City", "Moscow")
-                    .With("Zip", 123456))
-                .With("@metadata", DictionaryMap.New
-                    .With("@id", DocId)
-                    .With("@collection", Collection)), "success", "failures", TestContext.Current.CancellationToken)]
+            Stores = [new StoreIntent(context, JsonReaderMap.From($$"""
+            {
+                "Name": "John",
+                "Age": 30,
+                "Address": {
+                    "City": "Moscow",
+                    "Zip": 123456
+                },
+                "@metadata": {
+                    "@id": "{{DocId}}",
+                    "@collection": "{{Collection}}"
+                }
+            }
+            """), "success", "failures", TestContext.Current.CancellationToken)]
         };
         
         using var store = GetDocumentStore();
@@ -73,8 +78,24 @@ public class StoreDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         var provider = new MockDataIntentsProvider
         {
             Stores = [
-                new StoreIntent(context, DictionaryMap.New.With("@metadata", DictionaryMap.New.With("@id", DocId).With("@collection", "users").With("@change-vector", existingVector)), "success/1","failures/1", TestContext.Current.CancellationToken),
-                new StoreIntent(context, DictionaryMap.New.With("@metadata", DictionaryMap.New.With("@id", DocId).With("@collection", "users").With("@change-vector", "Vector2")), "success/2", "failures/2", TestContext.Current.CancellationToken)
+                new StoreIntent(context, JsonReaderMap.From($$"""
+                {
+                    "@metadata": {
+                        "@id": "{{DocId}}",
+                        "@collection": "users",
+                        "@change-vector": "{{existingVector}}"
+                    }
+                }
+                """), "success/1","failures/1", TestContext.Current.CancellationToken),
+                new StoreIntent(context, JsonReaderMap.From($$"""
+                {
+                    "@metadata": {
+                        "@id": "{{DocId}}",
+                        "@collection": "users",
+                        "@change-vector": "Vector2"
+                    }
+                }
+                """), "success/2", "failures/2", TestContext.Current.CancellationToken)
             ]
         };
 
@@ -97,11 +118,15 @@ public class StoreDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         var context = new MockReactorContext();
         var provider = new MockDataIntentsProvider
         {
-            Stores = [new StoreIntent(context, DictionaryMap.New
-                .With("CreatedAt", now.ToString("O"))
-                .With("@metadata", DictionaryMap.New
-                    .With("@id", DocId)
-                    .With("@collection", "docs")), "success", "failures", TestContext.Current.CancellationToken)]
+            Stores = [new StoreIntent(context, JsonReaderMap.From($$"""
+            {
+                "CreatedAt": "{{now:O}}",
+                "@metadata": {
+                    "@id": "{{DocId}}",
+                    "@collection": "docs"
+                }
+            }
+            """), "success", "failures", TestContext.Current.CancellationToken)]
         };
 
         using var store = GetDocumentStore();
@@ -124,11 +149,15 @@ public class StoreDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         var context = new MockReactorContext();
         var provider = new MockDataIntentsProvider
         {
-            Stores = [new StoreIntent(context, DictionaryMap.New
-                .With("@metadata", DictionaryMap.New
-                    .With("@id", DocId)
-                    .With("@collection", "docs")
-                    .With("@expires", expires.ToString("O"))), "success", "failures", TestContext.Current.CancellationToken)]
+            Stores = [new StoreIntent(context, JsonReaderMap.From($$"""
+            {
+                "@metadata": {
+                    "@id": "{{DocId}}",
+                    "@collection": "docs",
+                    "@expires": "{{expires:O}}"
+                }
+            }
+            """), "success", "failures", TestContext.Current.CancellationToken)]
         };
 
         using var store = GetDocumentStore();

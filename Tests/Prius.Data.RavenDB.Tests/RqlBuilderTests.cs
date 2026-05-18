@@ -10,14 +10,16 @@ public class RqlBuilderTests
     public void Should_Build_Standard_Query_With_Quoted_Fields_And_Parameters()
     {
         // Arrange
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Users")),
-            ("Where", DictionaryMap.New.With(
-                ("Status", new MapValue("Active")),
-                ("Profile-Data/Age", DictionaryMap.New.With(("$gt", new MapValue(21L))).AsMapValue()) // Не забываем 21L
-            ).AsMapValue()),
-            ("Take", new MapValue(50))
-        );
+        var queryMap = JsonReaderMap.From($$"""
+        {
+            "From": "Users",
+            "Where": {
+                "Status": "Active",
+                "Profile-Data/Age": { "$gt": 21 }
+            },
+            "Take": 50
+        }
+        """);
 
         // Act
         var (rql, parameters) = RqlBuilder.Build(queryMap);
@@ -35,18 +37,20 @@ public class RqlBuilderTests
     public void Should_Build_Logical_Blocks_And_Between_Operators()
     {
         // Arrange
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Orders")),
-            ("Where", DictionaryMap.New.With(
-                ("$or", DictionaryMap.New.With(
-                    ("Order", DictionaryMap.New.With(("0", new MapValue("c1")), ("1", new MapValue("c2"))).AsMapValue()),
-                    ("Data", DictionaryMap.New.With(
-                        ("c1", DictionaryMap.New.With(("Total", DictionaryMap.New.With(("$between", DictionaryMap.New.With(("$from", new MapValue(10)), ("$to", new MapValue(100))).AsMapValue())).AsMapValue())).AsMapValue()),
-                        ("c2", DictionaryMap.New.With(("IsSpecial", new MapValue(true))).AsMapValue())
-                    ).AsMapValue())
-                ).AsMapValue())
-            ).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From($$"""
+        {
+            "From": "Orders",
+            "Where": {
+                "$or": {
+                    "Order": { "0": "c1", "1": "c2" },
+                    "Data": {
+                        "c1": { "Total": { "$between": { "$from": 10, "$to": 100 } } },
+                        "c2": { "IsSpecial": true }
+                    }
+                }
+            }
+        }
+        """);
 
         // Act
         var (rql, parameters) = RqlBuilder.Build(queryMap);
@@ -62,15 +66,17 @@ public class RqlBuilderTests
     public void Should_Build_Valid_Facet_Syntax_Without_Aggregation_Duplication()
     {
         // Arrange
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Products")),
-            ("Facets", DictionaryMap.New.With(
-                ("CategoryCount", DictionaryMap.New.With(
-                    ("Function", new MapValue("count")), 
-                    ("Field", new MapValue("Category-Id"))
-                ).AsMapValue())
-            ).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From($$"""
+        {
+            "From": "Products",
+            "Facets": {
+                "CategoryCount": {
+                    "Function": "count", 
+                    "Field": "Category-Id"
+                }
+            }
+        }
+        """);
 
         // Act
         var (rql, _) = RqlBuilder.Build(queryMap);
@@ -83,20 +89,22 @@ public class RqlBuilderTests
     public void Should_Build_Search_Operator_With_And_And_Boost()
     {
         // Arrange
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Products")),
-            ("Where", DictionaryMap.New.With(
-                ("Description", DictionaryMap.New.With(
-                    ("$search", DictionaryMap.New.With(
-                        ("$term", new MapValue("RavenDB")),
-                        ("$options", DictionaryMap.New.With(
-                            ("Operator", new MapValue("AND")),
-                            ("Boost", new MapValue(2.5M))
-                        ).AsMapValue())
-                    ).AsMapValue())
-                ).AsMapValue())
-            ).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From($$"""
+        {
+            "From": "Products",
+            "Where": {
+                "Description": {
+                    "$search": {
+                        "$term": "RavenDB",
+                        "$options": {
+                            "Operator": "AND",
+                            "Boost": 2.5
+                        }
+                    }
+                }
+            }
+        }
+        """);
 
         // Act
         var (rql, parameters) = RqlBuilder.Build(queryMap);
@@ -110,14 +118,16 @@ public class RqlBuilderTests
     public void Should_Build_Field_To_Field_Comparison()
     {
         // Arrange
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Orders")),
-            ("Where", DictionaryMap.New.With(
-                ("UpdatedAt", DictionaryMap.New.With(
-                    ("$eq", DictionaryMap.New.With(("$field", new MapValue("CreatedAt"))).AsMapValue())
-                ).AsMapValue())
-            ).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From($$"""
+        {
+            "From": "Orders",
+            "Where": {
+                "UpdatedAt": {
+                    "$eq": { "$field": "CreatedAt" }
+                }
+            }
+        }
+        """);
 
         // Act
         var (rql, parameters) = RqlBuilder.Build(queryMap);
@@ -131,14 +141,16 @@ public class RqlBuilderTests
     public void Should_Handle_Empty_In_Operator_Safely()
     {
         // Arrange
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Users")),
-            ("Where", DictionaryMap.New.With(
-                ("Id", DictionaryMap.New.With(
-                    ("$in", DictionaryMap.New.AsMapValue())
-                ).AsMapValue())
-            ).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From($$"""
+        {
+            "From": "Users",
+            "Where": {
+                "Id": {
+                    "$in": {}
+                }
+            }
+        }
+        """);
 
         // Act
         var (rql, _) = RqlBuilder.Build(queryMap);
@@ -151,15 +163,17 @@ public class RqlBuilderTests
     public void Should_Build_Native_JavaScript_Filters_And_Projections()
     {
         // Arrange
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Employees")),
-            ("Where", DictionaryMap.New.With(
-                ("$js", new MapValue("this.Age > 30"))
-            ).AsMapValue()),
-            ("Select", DictionaryMap.New.With(
-                ("$js", new MapValue("FullName: this.FirstName + ' ' + this.LastName"))
-            ).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From($$"""
+        {
+            "From": "Employees",
+            "Where": {
+                "$js": "this.Age > 30"
+            },
+            "Select": {
+                "$js": "FullName: this.FirstName + ' ' + this.LastName"
+            }
+        }
+        """);
 
         // Act
         var (rql, _) = RqlBuilder.Build(queryMap);
@@ -172,12 +186,14 @@ public class RqlBuilderTests
     public void Should_Escape_Quotes_In_TimeSeries_Name()
     {
         // Arrange
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Metrics")),
-            ("TimeSeries", DictionaryMap.New.With(
-                ("Name", new MapValue("User's-HeartRate"))
-            ).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From($$"""
+        {
+            "From": "Metrics",
+            "TimeSeries": {
+                "Name": "User's-HeartRate"
+            }
+        }
+        """);
 
         // Act
         var (rql, _) = RqlBuilder.Build(queryMap);
@@ -190,18 +206,20 @@ public class RqlBuilderTests
     public void Should_Build_Metadata_Filters_And_Wildcard_Search()
     {
         // Arrange
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Documents")),
-            ("Where", DictionaryMap.New.With(
-                ("@metadata/last-modified", DictionaryMap.New.With(("$gt", new MapValue("2026-01-01"))).AsMapValue()),
-                ("Title", DictionaryMap.New.With(
-                    ("$search", DictionaryMap.New.With(
-                        ("$term", new MapValue("Raven")),
-                        ("$options", DictionaryMap.New.With(("Wildcard", new MapValue(true))).AsMapValue())
-                    ).AsMapValue())
-                ).AsMapValue())
-            ).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From($$"""
+        {
+            "From": "Documents",
+            "Where": {
+                "@metadata/last-modified": { "$gt": "2026-01-01" },
+                "Title": {
+                    "$search": {
+                        "$term": "Raven",
+                        "$options": { "Wildcard": true }
+                    }
+                }
+            }
+        }
+        """);
 
         // Act
         var (rql, parameters) = RqlBuilder.Build(queryMap);
@@ -216,23 +234,25 @@ public class RqlBuilderTests
     public void Should_Build_Spatial_Wkt_And_Distance_Sorting()
     {
         // Arrange
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Stores")),
-            ("Spatial", DictionaryMap.New.With(
-                ("Field", new MapValue("Coordinates")),
-                ("$within", DictionaryMap.New.With(
-                    ("Wkt", new MapValue("POLYGON((0 0, 0 10, 10 10, 10 0, 0 0))")),
-                    ("Circle", DictionaryMap.New.With(
-                        ("Latitude", new MapValue(55.7M)),
-                        ("Longitude", new MapValue(37.6M))
-                    ).AsMapValue())
-                ).AsMapValue())
-            ).AsMapValue()),
-            ("OrderBy", DictionaryMap.New.With(
-                ("Order", DictionaryMap.New.With(("0", new MapValue("$spatialDistance"))).AsMapValue()),
-                ("Data", DictionaryMap.New.With(("$spatialDistance", new MapValue("Asc"))).AsMapValue())
-            ).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From($$"""
+        {
+            "From": "Stores",
+            "Spatial": {
+                "Field": "Coordinates",
+                "$within": {
+                    "Wkt": "POLYGON((0 0, 0 10, 10 10, 10 0, 0 0))",
+                    "Circle": {
+                        "Latitude": 55.7,
+                        "Longitude": 37.6
+                    }
+                }
+            },
+            "OrderBy": {
+                "Order": { "0": "$spatialDistance" },
+                "Data": { "$spatialDistance": "Asc" }
+            }
+        }
+        """);
 
         // Act
         var (rql, parameters) = RqlBuilder.Build(queryMap);
@@ -246,16 +266,19 @@ public class RqlBuilderTests
     public void Should_Build_Server_Side_Select_Load()
     {
         // Arrange
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Orders")),
-            ("Select", DictionaryMap.New.With(
-                ("CompanyName", DictionaryMap.New.With(
-                    ("$load", DictionaryMap.New.With(
-                        ("Field", new MapValue("CompanyId")),
-                        ("Path", new MapValue("Name"))
-                    ).AsMapValue())
-                ).AsMapValue())
-            ).AsMapValue()));
+        var queryMap = JsonReaderMap.From($$"""
+        {
+            "From": "Orders",
+            "Select": {
+                "CompanyName": {
+                    "$load": {
+                        "Field": "CompanyId",
+                        "Path": "Name"
+                    }
+                }
+            }
+        }
+        """);
 
         // Act
         var (rql, _) = RqlBuilder.Build(queryMap);
@@ -268,18 +291,20 @@ public class RqlBuilderTests
     public void Should_Build_Server_Side_Select_Load_And_Highlighting()
     {
         // Arrange
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Orders")),
-            ("Select", DictionaryMap.New.With(
-                ("CompanyName", DictionaryMap.New.With(
-                    ("$load", DictionaryMap.New.With(
-                        ("Field", new MapValue("CompanyId")),
-                        ("Path", new MapValue("Name"))
-                    ).AsMapValue())
-                ).AsMapValue())
-            ).AsMapValue()),
-            ("Highlight", DictionaryMap.New.With(("Field", new MapValue("Notes"))).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From($$"""
+        {
+            "From": "Orders",
+            "Select": {
+                "CompanyName": {
+                    "$load": {
+                        "Field": "CompanyId",
+                        "Path": "Name"
+                    }
+                }
+            },
+            "Highlight": { "Field": "Notes" }
+        }
+        """);
 
         // Act
         var (rql, _) = RqlBuilder.Build(queryMap);
@@ -292,15 +317,13 @@ public class RqlBuilderTests
     public void Should_Build_Query_With_Standard_Includes_Enclosed_In_Quotes()
     {
         // Arrange
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Orders")),
-            ("Where", DictionaryMap.New.With(
-                ("Status", new MapValue("Shipped"))
-            ).AsMapValue()),
-            ("Include", DictionaryMap.New.With(
-                ("CompanyId", DictionaryMap.New.AsMapValue())
-            ).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From($$"""
+        {
+            "From": "Orders",
+            "Where": { "Status": "Shipped" },
+            "Include": { "CompanyId": {} }
+        }
+        """);
 
         // Act
         var (rql, parameters) = RqlBuilder.Build(queryMap);
@@ -314,14 +337,16 @@ public class RqlBuilderTests
     public void Should_Build_Metadata_Lookups_And_Exists_And_Null_Operators()
     {
         // Arrange
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Users")),
-            ("Where", DictionaryMap.New.With(
-                ("@metadata/last-modified", DictionaryMap.New.With(("$gt", new MapValue("2026-01-01"))).AsMapValue()),
-                ("DeletedAt", DictionaryMap.New.With(("$null", new MapValue(true))).AsMapValue()),
-                ("ActivationCode", DictionaryMap.New.With(("$exists", new MapValue(false))).AsMapValue())
-            ).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From($$"""
+        {
+            "From": "Users",
+            "Where": {
+                "@metadata/last-modified": { "$gt": "2026-01-01" },
+                "DeletedAt": { "$null": true },
+                "ActivationCode": { "$exists": false }
+            }
+        }
+        """);
 
         // Act
         var (rql, parameters) = RqlBuilder.Build(queryMap);
@@ -335,23 +360,19 @@ public class RqlBuilderTests
     public void Should_Build_In_And_All_Operators_With_Arrays()
     {
         // Arrange
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Products")),
-            ("Where", DictionaryMap.New.With(
-                ("Status", DictionaryMap.New.With(
-                    ("$in", DictionaryMap.New.With(
-                        ("Active", new MapValue(true)),
-                        ("Pending", new MapValue(true))
-                    ).AsMapValue())
-                ).AsMapValue()),
-                ("Tags", DictionaryMap.New.With(
-                    ("$all", DictionaryMap.New.With(
-                        ("Premium", new MapValue(true)),
-                        ("Featured", new MapValue(true))
-                    ).AsMapValue())
-                ).AsMapValue())
-            ).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From($$"""
+        {
+            "From": "Products",
+            "Where": {
+                "Status": {
+                    "$in": { "Active": true, "Pending": true }
+                },
+                "Tags": {
+                    "$all": { "Premium": true, "Featured": true }
+                }
+            }
+        }
+        """);
 
         // Act
         var (rql, parameters) = RqlBuilder.Build(queryMap);
@@ -368,17 +389,19 @@ public class RqlBuilderTests
     public void Should_Build_Search_With_Automatic_Wildcard_Suffix()
     {
         // Arrange
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Docs")),
-            ("Where", DictionaryMap.New.With(
-                ("Title", DictionaryMap.New.With(
-                    ("$search", DictionaryMap.New.With(
-                        ("$term", new MapValue("Raven")),
-                        ("$options", DictionaryMap.New.With(("Wildcard", new MapValue(true))).AsMapValue())
-                    ).AsMapValue())
-                ).AsMapValue())
-            ).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From($$"""
+        {
+            "From": "Docs",
+            "Where": {
+                "Title": {
+                    "$search": {
+                        "$term": "Raven",
+                        "$options": { "Wildcard": true }
+                    }
+                }
+            }
+        }
+        """);
 
         // Act
         var (rql, parameters) = RqlBuilder.Build(queryMap);
@@ -387,4 +410,5 @@ public class RqlBuilderTests
         Assert.Equal("from index 'Docs' where search('Title', $p0) limit $p1, $p2", rql);
         Assert.Equal("Raven*", parameters["p0"]);
     }
+
 }

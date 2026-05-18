@@ -98,7 +98,7 @@ public static class MapExtensions
     }
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static TMap With<TMap>(this TMap map, params (string Key, MapValue Value)[] items) where TMap : IMap
+    public static TMap With<TMap>(this TMap map, IEnumerable<(string Key, MapValue Value)> items) where TMap : IMap
     {
         foreach (var (key, value) in items)
             map[key] = value;
@@ -113,7 +113,7 @@ public static class MapExtensions
     }
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static TMap With<TMap>(this TMap map, params (string Key, IMap SubMap)[] items) where TMap : IMap
+    public static TMap With<TMap>(this TMap map, IEnumerable<(string Key, IMap SubMap)> items) where TMap : IMap
     {
         foreach (var (key, subMap) in items)
             map[key] = new MapValue(subMap);
@@ -129,7 +129,7 @@ public static class MapExtensions
     }
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static TMap With<TMap>(this TMap map, params IMap[] subMaps) where TMap : IMap
+    public static TMap With<TMap>(this TMap map, IEnumerable<IMap> subMaps) where TMap : IMap
     {
         foreach (var subMap in subMaps)
             map.With(subMap);

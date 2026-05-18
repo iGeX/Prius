@@ -1,5 +1,6 @@
 ﻿using System.IO.Compression;
 using System.Text;
+using System.Text.Json;
 using Prius.Core.Maps;
 using Xunit;
 
@@ -51,7 +52,12 @@ public sealed class PackageSystemTests
         repo.AddPackage(CreateManifest("B", "1.0.0", Tfm, ("Common", "2.0.0")));
 
         var resolver = new PackageResolver(repo);
-        var targets = DictionaryMap.New.With("A", "1.0.0").With("B", "1.0.0");
+        var targets = JsonReaderMap.From($$"""
+        {
+            "A": "1.0.0",
+            "B": "1.0.0"
+        }
+        """);
 
         // Act
         var snapshot = await resolver.Resolve(Tfm, targets, TestContext.Current.CancellationToken);
@@ -76,7 +82,12 @@ public sealed class PackageSystemTests
         var resolver = new PackageResolver(repo);
 
         // Act
-        var snapshot = await resolver.Resolve(Tfm, DictionaryMap.New.With("AnyLib", "1.0.0"), TestContext.Current.CancellationToken);
+        var targets = JsonReaderMap.From($$"""
+        {
+            "AnyLib": "1.0.0"
+        }
+        """);
+        var snapshot = await resolver.Resolve(Tfm, targets, TestContext.Current.CancellationToken);
         var order = snapshot["Order"].AsMap();
 
         // Assert
@@ -110,23 +121,25 @@ public sealed class PackageSystemTests
         return ms;
     }
 
-    private static DictionaryMap CreateManifest(string id, string version, string tfm = Tfm, params (string id, string version)[] deps)
+    private static IMap CreateManifest(string id, string version, string tfm = Tfm, params (string id, string version)[] deps)
     {
-        var info = DictionaryMap.New
-            .With("id", id)
-            .With("version", version);
-
-        var dependencies = DictionaryMap.New;
-        var tfmGroup = DictionaryMap.New;
+        var dependencies = new Dictionary<string, object>();
+        var tfmGroup = new Dictionary<string, object>();
 
         foreach (var (depId, depVer) in deps)
-            tfmGroup[depId] = new MapValue(DictionaryMap.New.With("version", depVer));
+            tfmGroup[depId] = new { version = depVer };
         
-        dependencies[tfm] = new MapValue(tfmGroup);
-
-        return DictionaryMap.New
-            .With("Info", info)
-            .With("Dependencies", dependencies)
-            .With("Assets", DictionaryMap.New);
+        dependencies[tfm] = tfmGroup;
+        
+        return JsonReaderMap.From($$"""
+        {
+            "Info": {
+                "id": "{{id}}",
+                "version": "{{version}}"
+            },
+            "Dependencies": {{JsonSerializer.Serialize(dependencies)}},
+            "Assets": {}
+        }
+        """);
     }
 }
