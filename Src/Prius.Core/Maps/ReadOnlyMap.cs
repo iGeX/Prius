@@ -25,10 +25,4 @@ internal sealed class ReadOnlyMap(IMap source) : IMap
         );
         set { }
     }
-
-    public bool Equals(IMap? other) => this.DeepEquals(other);
-    
-    public override bool Equals(object? obj) => obj is IMap other && this.DeepEquals(other);
-    
-    public override int GetHashCode() => this.MapHashCode();
 }

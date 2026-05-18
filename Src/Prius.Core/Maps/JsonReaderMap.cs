@@ -75,8 +75,6 @@ public sealed class JsonReaderMap(ReadOnlyMemory<byte> data) : IMap
         set => Materialize()[key] = value;
     }
 
-    public bool Equals(IMap? other) => this.DeepEquals(other);
-
     private IMap Materialize()
     {
         if (_materialized != null) return _materialized;

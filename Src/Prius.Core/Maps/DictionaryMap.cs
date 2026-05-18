@@ -44,18 +44,9 @@ public sealed class DictionaryMap(IDictionary dictionary) : IMap
         );
     }
 
-    public bool Equals(IMap? other) => this.DeepEquals(other);
-    
-    public override bool Equals(object? obj) => obj is IMap other && this.DeepEquals(other);
-    
-    public override int GetHashCode() => this.MapHashCode();
-    
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static DictionaryMap From(string key, MapValue value) => New.With(key, value);
     
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static DictionaryMap From(params (string Key, MapValue Value)[] items) => From((IEnumerable<(string Key, MapValue Value)>) items);
-
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static DictionaryMap From(IEnumerable<(string Key, MapValue Value)> items)
     {

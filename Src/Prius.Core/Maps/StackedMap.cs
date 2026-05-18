@@ -43,14 +43,4 @@ public sealed class StackedMap(IEnumerable<IMap> maps) : IMap
                 map[key] = value;
         }
     }
-
-    public static StackedMap New(params IMap[] maps) => New((IEnumerable<IMap>)maps);
-    
-    public static StackedMap New(IEnumerable<IMap> maps) => new(maps);
-    
-    public bool Equals(IMap? other) => this.DeepEquals(other);
-
-    public override bool Equals(object? obj) => obj is IMap other && this.DeepEquals(other);
-
-    public override int GetHashCode() => this.MapHashCode();
 }

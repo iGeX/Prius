@@ -19,10 +19,12 @@ public sealed class VirtualBus : IReactorContext
     {
         _routingTrie = routingTrie ?? throw new ArgumentNullException(nameof(routingTrie));
         _cacheLookup = _routeCache.GetAlternateLookup<ReadOnlySpan<char>>();
-        _rootContext = new ReactorContext(this, string.Empty, StackedMap.New());
+        _rootContext = new ReactorContext(this, string.Empty, new StackedMap([]));
     }
     
-    private static StackedMap NextEnv(IMap env, IMap? envPatch) => envPatch is null || envPatch.IsEmpty ? StackedMap.New(env) : StackedMap.New(env, envPatch);
+    private static StackedMap NextEnv(IMap env, IMap? envPatch) => envPatch is null || envPatch.IsEmpty 
+        ? new StackedMap([env]) 
+        : new StackedMap([env, envPatch]);
 
     internal void DispatchPut(ReactorContext caller, MapPath path, MapValue value, IMap? envPatch)
     {

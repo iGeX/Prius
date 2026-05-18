@@ -68,10 +68,4 @@ public sealed class PocoModelMap : IMap
         public object? GetValue(object target) => prop.GetValue(target);
         public void SetValue(object target, object? value) => prop.SetValue(target, value);
     }
-
-    public bool Equals(IMap? other) => this.DeepEquals(other);
-    
-    public override bool Equals(object? obj) => obj is IMap other && this.DeepEquals(other);
-    
-    public override int GetHashCode() => this.MapHashCode();
 }

@@ -1,6 +1,6 @@
 ﻿namespace Prius.Core.Maps;
 
-public interface IMap : IEquatable<IMap>
+public interface IMap
 {
     bool IsEmpty { get; }
     
