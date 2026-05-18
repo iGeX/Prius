@@ -7,15 +7,11 @@ public sealed class RoutingTrie
 {
     private readonly RoutingNode _root = new();
 
-    /// <summary>
-    /// Добавление правила маршрутизации при сборке вселенной (или в стазисе)
-    /// </summary>
     public void AddRoute(string pathPattern, IReactor reactor)
     {
         if (string.IsNullOrWhiteSpace(pathPattern)) throw new ArgumentNullException(nameof(pathPattern));
         if (reactor == null) throw new ArgumentNullException(nameof(reactor));
 
-        // Используем MapPath для разбора конфигурационного пути по сегментам
         MapPath path = pathPattern;
         var current = _root;
 
@@ -27,7 +23,7 @@ public sealed class RoutingTrie
             if (segment == "**")
             {
                 current.DeepWildcardReactor = reactor;
-                return; // '**' всегда терминален для ветки, дальше идти нет смысла
+                return;
             }
             
             if (segment == "*")
@@ -37,8 +33,6 @@ public sealed class RoutingTrie
                     current.WildcardReactor = reactor;
                     return;
                 }
-                // Если '*' в середине пути (например, "Orders/*/Settings"), 
-                // нам нужен специальный узел-заглушка для обработки поддеревьев.
                 segment = "@wildcard"; 
             }
 
@@ -53,53 +47,74 @@ public sealed class RoutingTrie
         current.TerminalReactor = reactor;
     }
 
-    /// <summary>
-    /// Высокопроизводительный резолв пути за O(k) без аллокаций
-    /// </summary>
-    public IReactor Resolve(MapPath absolutePath)
+    public ResolveResult Resolve(MapPath absolutePath)
     {
         var current = _root;
         IReactor? fallbackReactor = null;
+        
+        var originalPath = absolutePath; 
+        var currentDepth = 0;
+        var fallbackDepth = 0;
+        var lastMatchedKey = string.Empty;
+        var fallbackKey = string.Empty;
 
         while (!absolutePath.IsEmpty)
         {
-            // Если на пути встретился глубокий вайлдкард, он имеет наивысший приоритет для всех "детей"
             if (current.DeepWildcardReactor != null)
             {
                 fallbackReactor = current.DeepWildcardReactor;
+                fallbackDepth = currentDepth;
+                fallbackKey = lastMatchedKey;
             }
 
             var segment = absolutePath.Head;
+            lastMatchedKey = segment;
             absolutePath = absolutePath.Tail;
+            currentDepth++;
 
-            // 1. Пытаемся идти по точному совпадению сегмента
             if (current.Children.TryGetValue(segment, out var nextNode))
             {
                 current = nextNode;
                 continue;
             }
 
-            // 2. Если точного пути нет, проверяем одинарный вайлдкард в середине пути
             if (current.Children.TryGetValue("@wildcard", out var wildcardNode))
             {
                 current = wildcardNode;
                 continue;
             }
 
-            // 3. Если и его нет, но у нас по пути был накоплен '**' — отдаем ему
-            if (fallbackReactor != null) return fallbackReactor;
+            if (fallbackReactor != null)
+                return new ResolveResult(fallbackReactor, SlicePath(originalPath, fallbackDepth), fallbackKey);
 
-            // 4. Если путь оборвался на последнем сегменте, проверяем терминальный одинарный '*'
             if (absolutePath.IsEmpty && current.WildcardReactor != null)
-            {
-                return current.WildcardReactor;
-            }
+                return new ResolveResult(current.WildcardReactor, string.Empty, segment);
 
-            // Ток некуда пустить — возвращаем пустой реактор-заглушку, система не должна падать
-            return EmptyReactor.Instance; 
+            return new ResolveResult(EmptyReactor.Instance, string.Empty, segment); 
         }
 
-        // Возвращаем точный реактор, либо накопленный '**', либо заглушку пустоты
-        return current.TerminalReactor ?? fallbackReactor ?? EmptyReactor.Instance;
+        if (current.TerminalReactor != null)
+            return new ResolveResult(current.TerminalReactor, string.Empty, lastMatchedKey);
+
+        if (fallbackReactor != null)
+            return new ResolveResult(fallbackReactor, SlicePath(originalPath, fallbackDepth), fallbackKey);
+
+        return new ResolveResult(EmptyReactor.Instance, string.Empty, lastMatchedKey);
     }
+
+    private static MapPath SlicePath(MapPath path, int segmentsToSkip)
+    {
+        var result = path;
+        for (var i = 0; i < segmentsToSkip; i++)
+            result = result.Tail;
+            
+        return result;
+    }
+}
+
+public readonly ref struct ResolveResult(IReactor reactor, MapPath remainingPath, string reactorKey)
+{
+    public IReactor Reactor { get; } = reactor;
+    public MapPath RemainingPath { get; } = remainingPath;
+    public string ReactorKey { get; } = reactorKey;
 }

@@ -4,9 +4,9 @@ using Core.Maps;
 
 public interface IReactor
 {
-    void Put(IReactorContext context, MapValue value);
+    void Put(IReactorContext context, MapPath path, MapValue value);
     
-    MapValue Get(IReactorContext context);
+    MapValue Get(IReactorContext context, MapPath path);
     
     void Notify(IReactorContext context, IMap changedKeys);
 }

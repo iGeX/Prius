@@ -3,26 +3,17 @@
 using Core.Maps;
 using Abstractions;
 
-public readonly struct ReactorContext : IReactorContext
+public sealed class ReactorContext(VirtualBus bus, string absolutePath, string key, IMap env) : IReactorContext
 {
-    private readonly VirtualBus _bus;
-    
-    internal readonly string AbsolutePath;
-    
-    public string Key => new MapPath(AbsolutePath).Tail;
+    internal string AbsolutePath => absolutePath;
 
-    public IMap Env {get;}
-    
-    internal ReactorContext(VirtualBus bus, string absolutePath, IMap env)
-    {
-        _bus = bus;
-        AbsolutePath = absolutePath;
-        Env = env;
-    }
+    public string Key => key;
 
-    public void Put(MapPath path, MapValue value, IMap? envPatch = null) => _bus.DispatchPut(this, path, value, envPatch);
+    public IMap Env => env;
 
-    public MapValue Get(MapPath path, IMap? envPatch = null) => _bus.DispatchGet(this, path, envPatch);
+    public void Put(MapPath path, MapValue value, IMap? envPatch = null) => bus.DispatchPut(this, path, value, envPatch);
 
-    public void Notify(IMap changedKeys) => _bus.DispatchNotify(this, changedKeys);
+    public MapValue Get(MapPath path, IMap? envPatch = null) => bus.DispatchGet(this, path, envPatch);
+
+    public void Notify(IMap changedKeys) => bus.DispatchNotify(this, changedKeys);
 }
