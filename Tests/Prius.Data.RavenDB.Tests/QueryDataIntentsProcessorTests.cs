@@ -93,10 +93,12 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         WaitForIndexing(store);
 
         var context = new MockReactorContext();
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Users/ByAge")),
-            ("Where", DictionaryMap.New.With(("Age", new MapValue(30L))).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From("""
+            {
+                "From": "Users/ByAge",
+                "Where": { "Age": 30 }
+            }
+            """);
 
         var provider = new MockDataIntentsProvider
         {
@@ -136,17 +138,15 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         WaitForIndexing(store);
 
         var context = new MockReactorContext();
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Users/ByAge")),
-            ("OrderBy", DictionaryMap.New.With(
-                ("Order", DictionaryMap.New.With(
-                    ("0", new MapValue("Age"))
-                ).AsMapValue()),
-                ("Data", DictionaryMap.New.With(
-                    ("Age", new MapValue("Asc"))
-                ).AsMapValue())
-            ).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From("""
+            {
+                "From": "Users/ByAge",
+                "OrderBy": {
+                    "Order": { "0": "Age" },
+                    "Data": { "Age": "Asc" }
+                }
+            }
+            """);
 
         var provider = new MockDataIntentsProvider
         {
@@ -174,10 +174,12 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         await new Users_ByAge().ExecuteAsync(store, token: TestContext.Current.CancellationToken);
 
         var context = new MockReactorContext();
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Users/ByAge")),
-            ("Where", DictionaryMap.New.With(("Age", new MapValue(99L))).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From("""
+            {
+                "From": "Users/ByAge",
+                "Where": { "Age": 99 }
+            }
+            """);
 
         var provider = new MockDataIntentsProvider
         {
@@ -211,16 +213,20 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         WaitForIndexing(store);
 
         var context = new MockReactorContext();
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Users/ByAge")),
-            ("Where", DictionaryMap.New.With(("$or", DictionaryMap.New.With(
-                ("Order", DictionaryMap.New.With(("0", new MapValue("cond1")), ("1", new MapValue("cond2"))).AsMapValue()),
-                ("Data", DictionaryMap.New.With(
-                    ("cond1", DictionaryMap.New.With(("Age", new MapValue(30L))).AsMapValue()),
-                    ("cond2", DictionaryMap.New.With(("Age", new MapValue(35L))).AsMapValue())
-                ).AsMapValue())
-            ).AsMapValue())).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From("""
+            {
+                "From": "Users/ByAge",
+                "Where": {
+                    "$or": {
+                        "Order": { "0": "cond1", "1": "cond2" },
+                        "Data": {
+                            "cond1": { "Age": 30 },
+                            "cond2": { "Age": 35 }
+                        }
+                    }
+                }
+            }
+            """);
 
         var provider = new MockDataIntentsProvider
         {
@@ -255,11 +261,13 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         WaitForIndexing(store);
 
         var context = new MockReactorContext();
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Users/ByAge")),
-            ("Skip", new MapValue(2)),
-            ("Take", new MapValue(2))
-        );
+        var queryMap = JsonReaderMap.From("""
+            {
+                "From": "Users/ByAge",
+                "Skip": 2,
+                "Take": 2
+            }
+            """);
 
         var provider = new MockDataIntentsProvider
         {
@@ -293,12 +301,14 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         WaitForIndexing(store);
 
         var context = new MockReactorContext();
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Users/ByAge")),
-            ("Facets", DictionaryMap.New.With(
-                ("Age", DictionaryMap.New.With(("Function", new MapValue("count")), ("Field", new MapValue("Age"))).AsMapValue())
-            ).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From("""
+            {
+                "From": "Users/ByAge",
+                "Facets": {
+                    "Age": { "Function": "count", "Field": "Age" }
+                }
+            }
+            """);
 
         var provider = new MockDataIntentsProvider
         {
@@ -337,12 +347,14 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         
         var context = new MockReactorContext();
         
-        var invalidQueryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Sales")),
-            ("Reduce", DictionaryMap.New.With(
-                ("Total", DictionaryMap.New.With(("$sum", new MapValue("Amount"))).AsMapValue())
-            ).AsMapValue())
-        );
+        var invalidQueryMap = JsonReaderMap.From("""
+            {
+                "From": "Sales",
+                "Reduce": {
+                    "Total": { "$sum": "Amount" }
+                }
+            }
+            """);
 
         var provider = new MockDataIntentsProvider
         {
@@ -374,15 +386,17 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         WaitForIndexing(store);
 
         var context = new MockReactorContext();
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Users/ByNotes")),
-            ("Where", DictionaryMap.New.With(
-                ("Notes", DictionaryMap.New.With(
-                    ("$search", DictionaryMap.New.With(("$term", new MapValue("RavenDB"))).AsMapValue())
-                ).AsMapValue())
-            ).AsMapValue()),
-            ("Highlight", DictionaryMap.New.With(("Field", new MapValue("Notes"))).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From("""
+            {
+                "From": "Users/ByNotes",
+                "Where": {
+                    "Notes": {
+                        "$search": { "$term": "RavenDB" }
+                    }
+                },
+                "Highlight": { "Field": "Notes" }
+            }
+            """);
 
         var provider = new MockDataIntentsProvider
         {
@@ -434,15 +448,13 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         WaitForIndexing(store);
 
         var context = new MockReactorContext();
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Orders/ByTotal")),
-            ("Where", DictionaryMap.New.With(
-                ("Total", DictionaryMap.New.With(("$eq", new MapValue(500M))).AsMapValue())
-            ).AsMapValue()),
-            ("Include", DictionaryMap.New.With(
-                ("CompanyId", DictionaryMap.New.AsMapValue())
-            ).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From("""
+            {
+                "From": "Orders/ByTotal",
+                "Where": { "Total": { "$eq": 500 } },
+                "Include": { "CompanyId": {} }
+            }
+            """);
 
         var provider = new MockDataIntentsProvider
         {
@@ -505,10 +517,12 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         WaitForIndexing(store);
 
         var context = new MockReactorContext();
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Sales/ByProduct")),
-            ("GroupBy", DictionaryMap.New.With(("ProductId", DictionaryMap.New.AsMapValue())).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From("""
+            {
+                "From": "Sales/ByProduct",
+                "GroupBy": { "ProductId": {} }
+            }
+            """);
 
         var provider = new MockDataIntentsProvider
         {
@@ -557,23 +571,25 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         WaitForIndexing(store);
 
         var context = new MockReactorContext();
-        var queryMap = DictionaryMap.New.With(
-            ("From", new MapValue("Stores/ByLocation")),
-            ("Spatial", DictionaryMap.New.With(
-                ("Field", new MapValue("Coordinates")),
-                ("$within", DictionaryMap.New.With(
-                    ("Circle", DictionaryMap.New.With(
-                        ("Latitude", new MapValue(55.7522M)),
-                        ("Longitude", new MapValue(37.6156M)),
-                        ("Radius", new MapValue(1000M))
-                    ).AsMapValue())
-                ).AsMapValue())
-            ).AsMapValue()),
-            ("OrderBy", DictionaryMap.New.With(
-                ("Order", DictionaryMap.New.With(("0", new MapValue("$spatialDistance"))).AsMapValue()),
-                ("Data", DictionaryMap.New.With(("$spatialDistance", new MapValue("Asc"))).AsMapValue())
-            ).AsMapValue())
-        );
+        var queryMap = JsonReaderMap.From("""
+            {
+                "From": "Stores/ByLocation",
+                "Spatial": {
+                    "Field": "Coordinates",
+                    "$within": {
+                        "Circle": {
+                            "Latitude": 55.7522,
+                            "Longitude": 37.6156,
+                            "Radius": 1000
+                        }
+                    }
+                },
+                "OrderBy": {
+                    "Order": { "0": "$spatialDistance" },
+                    "Data": { "$spatialDistance": "Asc" }
+                }
+            }
+            """);
 
         var provider = new MockDataIntentsProvider
         {
