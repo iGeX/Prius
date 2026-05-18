@@ -43,7 +43,7 @@ public sealed class PackageImporterTests
         var asset = map.DeepGet("Assets/lib/net8.0/Test.dll").AsMap();
         Assert.False(asset.IsEmpty);
         
-        Assert.True(asset.Get("size").AsValue<long>() > 0);
-        Assert.Equal(64, asset.Get("hash").AsValue<string>().Length);
+        Assert.True(asset["size"].AsValue<long>() > 0);
+        Assert.Equal(64, asset["hash"].AsValue<string>().Length);
     }
 }

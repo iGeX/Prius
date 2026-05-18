@@ -107,13 +107,13 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         {
             Assert.True(context.PutCalls.ContainsKey("output/results"));
             var results = context.PutCalls["output/results"].AsMap();
-            var items = results.Get("Items").AsMap();
-            var order = results.Get("Order").AsMap();
+            var items = results["Items"].AsMap();
+            var order = results["Order"].AsMap();
 
             Assert.Equal(1L, items.Keys().Count());
-            Assert.False(items.Get("users/1").IsEmpty);
-            Assert.Equal("John", items.Get("users/1").AsMap().Get("Name").AsString());
-            Assert.Equal("users/1", order.Get("0").AsString());
+            Assert.False(items["users/1"].IsEmpty);
+            Assert.Equal("John", items["users/1"].AsMap()["Name"].AsString());
+            Assert.Equal("users/1", order["0"].AsString());
             
             return Task.CompletedTask;
         });
@@ -157,11 +157,11 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         {
             Assert.True(context.PutCalls.ContainsKey("output/results"));
             var results = context.PutCalls["output/results"].AsMap();
-            var order = results.Get("Order").AsMap();
+            var order = results["Order"].AsMap();
 
-            Assert.Equal("users/2", order.Get("0").AsString()); // Age 25
-            Assert.Equal("users/1", order.Get("1").AsString()); // Age 30
-            Assert.Equal("users/3", order.Get("2").AsString()); // Age 35
+            Assert.Equal("users/2", order["0"].AsString()); // Age 25
+            Assert.Equal("users/1", order["1"].AsString()); // Age 30
+            Assert.Equal("users/3", order["2"].AsString()); // Age 35
             
             return Task.CompletedTask;
         });
@@ -188,8 +188,8 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         {
             Assert.True(context.PutCalls.ContainsKey("output/results"));
             var results = context.PutCalls["output/results"].AsMap();
-            Assert.True(results.Get("Items").AsMap().IsEmpty);
-            Assert.True(results.Get("Order").AsMap().IsEmpty);
+            Assert.True(results["Items"].AsMap().IsEmpty);
+            Assert.True(results["Order"].AsMap().IsEmpty);
             return Task.CompletedTask;
         });
     }
@@ -231,10 +231,10 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         {
             Assert.True(context.PutCalls.ContainsKey("output/results"));
             var results = context.PutCalls["output/results"].AsMap();
-            var items = results.Get("Items").AsMap();
+            var items = results["Items"].AsMap();
             Assert.Equal(2L, items.Keys().Count());
-            Assert.False(items.Get("users/1").IsEmpty);
-            Assert.False(items.Get("users/3").IsEmpty);
+            Assert.False(items["users/1"].IsEmpty);
+            Assert.False(items["users/3"].IsEmpty);
             return Task.CompletedTask;
         });
     }
@@ -270,7 +270,7 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         {
             Assert.True(context.PutCalls.ContainsKey("output/results"));
             var results = context.PutCalls["output/results"].AsMap();
-            var items = results.Get("Items").AsMap();
+            var items = results["Items"].AsMap();
             Assert.Equal(2L, items.Keys().Count());
             return Task.CompletedTask;
         });
@@ -310,18 +310,18 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             Assert.True(context.PutCalls.ContainsKey("output/results"), "PutCalls should contain output/results");
             var results = context.PutCalls["output/results"].AsMap();
             
-            Assert.True(results.Get("Items").AsMap().IsEmpty, "Items map should be empty for facet queries");
-            Assert.True(results.Get("Order").AsMap().IsEmpty, "Order map should be empty for facet queries");
+            Assert.True(results["Items"].AsMap().IsEmpty, "Items map should be empty for facet queries");
+            Assert.True(results["Order"].AsMap().IsEmpty, "Order map should be empty for facet queries");
             
-            var facets = results.Get("Facets").AsMap();
+            var facets = results["Facets"].AsMap();
             if (facets.IsEmpty)
             {
                 Assert.Fail("Facets map is empty. Full results: " + results.Serialize());
             }
             
             Assert.True(facets.ContainsKey("Age"), "Facets should contain 'Age' key");
-            var ageFacet = facets.Get("Age").AsMap();
-            var values = ageFacet.Get("Values").AsMap();
+            var ageFacet = facets["Age"].AsMap();
+            var values = ageFacet["Values"].AsMap();
             
             Assert.Equal(2, values.Keys().Count());
 
@@ -393,12 +393,12 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         {
             Assert.True(context.PutCalls.ContainsKey("output/results"), "Should generate successful output");
             var results = context.PutCalls["output/results"].AsMap();
-            var highlights = results.Get("Highlights").AsMap();
+            var highlights = results["Highlights"].AsMap();
 
             Assert.False(highlights.IsEmpty, "Highlights map should contain keys for matched documents");
             Assert.True(highlights.ContainsKey("users/1"), "Highlights should have entry for users/1");
 
-            var userHighlights = highlights.Get("users/1").AsMap();
+            var userHighlights = highlights["users/1"].AsMap();
             Assert.True(userHighlights.ContainsKey("Notes"), "Should contain highlights for 'Notes' field");
         
             return Task.CompletedTask;
@@ -462,15 +462,15 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             Assert.True(context.PutCalls.ContainsKey("output/results"), "Should generate successful output");
             var results = context.PutCalls["output/results"].AsMap();
             
-            var items = results.Get("Items").AsMap();
+            var items = results["Items"].AsMap();
             Assert.True(items.ContainsKey("orders/1"), "Should find the document in Items");
             
-            var includes = results.Get("Includes").AsMap();
+            var includes = results["Includes"].AsMap();
             Assert.False(includes.IsEmpty, "Includes map should not be empty");
             Assert.True(includes.ContainsKey("companies/1"), "Includes should contain the referenced company document");
             
-            var companyDoc = includes.Get("companies/1").AsMap();
-            Assert.Equal("Microsoft", companyDoc.Get("Name").AsString());
+            var companyDoc = includes["companies/1"].AsMap();
+            Assert.Equal("Microsoft", companyDoc["Name"].AsString());
 
             return Task.CompletedTask;
         });
@@ -527,14 +527,14 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             Assert.True(context.PutCalls.ContainsKey("output/results"), "Should generate successful output");
             var results = context.PutCalls["output/results"].AsMap();
             
-            var items = results.Get("Items").AsMap();
+            var items = results["Items"].AsMap();
             Assert.False(items.IsEmpty, "Should return aggregated items");
             
             Assert.True(items.ContainsKey("prod/1"), "Processor should concatenate GroupBy values to form ID 'prod/1'");
             
-            var aggregatedRow = items.Get("prod/1").AsMap();
-            Assert.Equal(250L, aggregatedRow.Get("Amount").AsLong());
-            Assert.Equal(2L, aggregatedRow.Get("Count").AsLong());
+            var aggregatedRow = items["prod/1"].AsMap();
+            Assert.Equal(250L, aggregatedRow["Amount"].AsLong());
+            Assert.Equal(2L, aggregatedRow["Count"].AsLong());
 
             return Task.CompletedTask;
         });
@@ -592,7 +592,7 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
 
             Assert.True(context.PutCalls.ContainsKey("output/results"));
             var results = context.PutCalls["output/results"].AsMap();
-            var items = results.Get("Items").AsMap();
+            var items = results["Items"].AsMap();
             
             Assert.Equal(2, items.Keys().Count());
             return Task.CompletedTask;

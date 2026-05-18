@@ -19,25 +19,25 @@ public static class RqlBuilder
         var sb = new StringBuilder();
         var parameters = new Dictionary<string, object>(StringComparer.Ordinal);
 
-        var fromVal = queryMap.Get("From");
+        var fromVal = queryMap["From"];
         if (fromVal.IsEmpty)
             return (string.Empty, []);
 
-        BuildFrom(sb, fromVal, queryMap.Get("TimeSeries").AsMap());
+        BuildFrom(sb, fromVal, queryMap["TimeSeries"].AsMap());
         BuildWhereAndSpatial(sb, queryMap, parameters);
-        BuildOrderBy(sb, queryMap.Get("OrderBy").AsMap(), queryMap.Get("Spatial").AsMap());
+        BuildOrderBy(sb, queryMap["OrderBy"].AsMap(), queryMap["Spatial"].AsMap());
         
-        BuildInclude(sb, queryMap.Get("Include").AsMap(), queryMap.Get("Highlight").AsMap());
+        BuildInclude(sb, queryMap["Include"].AsMap(), queryMap["Highlight"].AsMap());
         
         BuildSelect(
             sb, 
-            queryMap.Get("Select"), 
-            queryMap.Get("Reduce").AsMap(), 
-            queryMap.Get("Facets").AsMap(), 
-            queryMap.Get("GroupBy").AsMap()
+            queryMap["Select"], 
+            queryMap["Reduce"].AsMap(), 
+            queryMap["Facets"].AsMap(), 
+            queryMap["GroupBy"].AsMap()
         );
         
-        BuildLimit(sb, queryMap.Get("Skip"), queryMap.Get("Take"), parameters);
+        BuildLimit(sb, queryMap["Skip"], queryMap["Take"], parameters);
 
         return (sb.ToString().TrimEnd(), parameters);
     }
@@ -54,7 +54,7 @@ public static class RqlBuilder
             return;
         }
 
-        var escapedTsName = tsMap.Get("Name").AsString().Replace("'", "''");
+        var escapedTsName = tsMap["Name"].AsString().Replace("'", "''");
 
         sb.Append("from index '");
         sb.Append(escapedFrom);
@@ -65,8 +65,8 @@ public static class RqlBuilder
     
     private static void BuildWhereAndSpatial(StringBuilder sb, IMap queryMap, Dictionary<string, object> parameters)
     {
-        var whereMap = queryMap.Get("Where").AsMap();
-        var spatialMap = queryMap.Get("Spatial").AsMap();
+        var whereMap = queryMap["Where"].AsMap();
+        var spatialMap = queryMap["Spatial"].AsMap();
         
         var hasWhere = !whereMap.IsEmpty;
         var hasSpatial = !spatialMap.IsEmpty;
@@ -77,8 +77,8 @@ public static class RqlBuilder
         var hasValidSpatial = false;
         if (hasSpatial)
         {
-            var withinMap = spatialMap.Get("$within").AsMap();
-            hasValidSpatial = !withinMap.Get("Wkt").IsEmpty || !withinMap.Get("Circle").IsEmpty;
+            var withinMap = spatialMap["$within"].AsMap();
+            hasValidSpatial = !withinMap["Wkt"].IsEmpty || !withinMap["Circle"].IsEmpty;
         }
 
         if (!hasWhere && !hasValidSpatial)
@@ -100,15 +100,15 @@ public static class RqlBuilder
 
     private static void BuildSpatial(StringBuilder sb, IMap spatialMap, Dictionary<string, object> parameters)
     {
-        var field = NormalizePath(spatialMap.Get("Field").AsString());
+        var field = NormalizePath(spatialMap["Field"].AsString());
         var op = spatialMap.Keys().FirstOrDefault(k => k.StartsWith('$'));
         
         if (op != "$within")
             return;
 
-        var withinMap = spatialMap.Get("$within").AsMap();
-        var circle = withinMap.Get("Circle").AsMap();
-        var wkt = withinMap.Get("Wkt");
+        var withinMap = spatialMap["$within"].AsMap();
+        var circle = withinMap["Circle"].AsMap();
+        var wkt = withinMap["Wkt"];
 
         if (!wkt.IsEmpty)
         {
@@ -118,9 +118,9 @@ public static class RqlBuilder
             return;
         }
 
-        var lat = circle.Get("Latitude").AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture);
-        var lng = circle.Get("Longitude").AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture);
-        var rad = circle.Get("Radius").AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var lat = circle["Latitude"].AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var lng = circle["Longitude"].AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture);
+        var rad = circle["Radius"].AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         sb.Append($"spatial.within({field}, spatial.circle({rad}, {lat}, {lng}))");
     }
@@ -150,7 +150,7 @@ public static class RqlBuilder
 
         if (!highlightMap.IsEmpty)
         {
-            var originalField = highlightMap.Get("Field").AsString();
+            var originalField = highlightMap["Field"].AsString();
             var field = NormalizePath(originalField);
             sb.Append($"include highlight({field}, 128, 5) ");
         }
@@ -165,7 +165,7 @@ public static class RqlBuilder
                 sb.Append(" and ");
 
             first = false;
-            var val = whereMap.Get(key);
+            var val = whereMap[key];
 
             if (key == "$or" || key == "$and")
             {
@@ -195,8 +195,8 @@ public static class RqlBuilder
 
     private static void BuildLogicalBlock(StringBuilder sb, string op, IMap blockMap, Dictionary<string, object> parameters)
     {
-        var orderMap = blockMap.Get("Order").AsMap();
-        var dataMap = blockMap.Get("Data").AsMap();
+        var orderMap = blockMap["Order"].AsMap();
+        var dataMap = blockMap["Data"].AsMap();
         if (orderMap.IsEmpty || dataMap.IsEmpty)
             return;
 
@@ -211,8 +211,8 @@ public static class RqlBuilder
                 sb.Append(rqlOp);
 
             first = false;
-            var condKey = orderMap.Get(i.ToIndexString()).AsString();
-            var condMap = dataMap.Get(condKey).AsMap();
+            var condKey = orderMap[i.ToIndexString()].AsString();
+            var condMap = dataMap[condKey].AsMap();
             
             BuildWhere(sb, condMap, parameters);
         }
@@ -223,7 +223,7 @@ public static class RqlBuilder
     {
         foreach (var opKey in opMap.Keys())
         {
-            var val = opMap.Get(opKey);
+            var val = opMap[opKey] ;
 
             switch (opKey)
             {
@@ -243,10 +243,10 @@ public static class RqlBuilder
                     sb.Append(val.AsValue<bool>() ? ") = true" : ") = false");
                     break;
                 case "$between":
-                    var fromVal = val.AsMap().Get("$from");
-                    var toVal = val.AsMap().Get("$to");
-                    var incFrom = val.AsMap().Get("$includeFrom").IsEmpty || val.AsMap().Get("$includeFrom").AsValue<bool>();
-                    var incTo = val.AsMap().Get("$includeTo").IsEmpty || val.AsMap().Get("$includeTo").AsValue<bool>();
+                    var fromVal = val.AsMap()["$from"];
+                    var toVal = val.AsMap()["$to"];
+                    var incFrom = val.AsMap()["$includeFrom"].IsEmpty || val.AsMap()["$includeFrom"].AsValue<bool>();
+                    var incTo = val.AsMap()["$includeTo"].IsEmpty || val.AsMap()["$includeTo"].AsValue<bool>();
 
                     AppendConstraint(sb, field, incFrom ? ">=" : ">", fromVal, parameters);
                     sb.Append(" and ");
@@ -277,11 +277,11 @@ public static class RqlBuilder
                     sb.Append(')');
                     break;
                 case "$search":
-                    var term = val.AsMap().Get("$term").AsString();
-                    var options = val.AsMap().Get("$options").AsMap();
-                    var searchOp = options.Get("Operator").IsEmpty ? "OR" : options.Get("Operator").AsString();
-                    var boost = options.Get("Boost");
-                    var wildcard = !options.Get("Wildcard").IsEmpty && options.Get("Wildcard").AsValue<bool>();
+                    var term = val.AsMap()["$term"].AsString();
+                    var options = val.AsMap()["$options"].AsMap();
+                    var searchOp = options["Operator"].IsEmpty ? "OR" : options["Operator"].AsString();
+                    var boost = options["Boost"];
+                    var wildcard = !options["Wildcard"].IsEmpty && options["Wildcard"].AsValue<bool>();
 
                     if (wildcard && !term.EndsWith('*'))
                         term += "*";
@@ -312,9 +312,9 @@ public static class RqlBuilder
         sb.Append(op);
         sb.Append(' ');
 
-        if (val.IsMap && !val.AsMap().Get("$field").IsEmpty)
+        if (val.IsMap && !val.AsMap()["$field"].IsEmpty)
         {
-            sb.Append(NormalizePath(val.AsMap().Get("$field").AsString()));
+            sb.Append(NormalizePath(val.AsMap()["$field"].AsString()));
             return;
         }
 
@@ -326,8 +326,8 @@ public static class RqlBuilder
 
     private static void BuildOrderBy(StringBuilder sb, IMap orderByMap, IMap spatialMap)
     {
-        var orderMap = orderByMap.Get("Order").AsMap();
-        var dataMap = orderByMap.Get("Data").AsMap();
+        var orderMap = orderByMap["Order"].AsMap();
+        var dataMap = orderByMap["Data"].AsMap();
         if (orderMap.IsEmpty || dataMap.IsEmpty)
             return;
 
@@ -340,14 +340,14 @@ public static class RqlBuilder
             if (!first)
                 sb.Append(", ");
             first = false;
-            var fieldKey = orderMap.Get(i.ToIndexString()).AsString();
-            var direction = dataMap.Get(fieldKey).AsString();
+            var fieldKey = orderMap[i.ToIndexString()].AsString();
+            var direction = dataMap[fieldKey].AsString();
             
             if (fieldKey == "$spatialDistance")
             {
-                var field = NormalizePath(spatialMap.Get("Field").AsString());
-                var circle = spatialMap.Get("$within").AsMap().Get("Circle").AsMap();
-                sb.Append($"spatial.distance({field}, spatial.point({circle.Get("Latitude").AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture)}, {circle.Get("Longitude").AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture)}))");
+                var field = NormalizePath(spatialMap["Field"].AsString());
+                var circle = spatialMap["$within"].AsMap()["Circle"].AsMap();
+                sb.Append($"spatial.distance({field}, spatial.point({circle["Latitude"].AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture)}, {circle["Longitude"].AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture)}))");
             }
             else
             {
@@ -374,8 +374,8 @@ public static class RqlBuilder
                 if (!first) sb.Append(", ");
                 first = false;
 
-                var facetMap = facetsMap.Get(key).AsMap();
-                var field = NormalizePath(facetMap.Get("Field").AsString());
+                var facetMap = facetsMap[key].AsMap();
+                var field = NormalizePath(facetMap["Field"].AsString());
                 
                 if (string.IsNullOrEmpty(field))
                     field = NormalizePath(key).Replace("Count", "").Replace("Sum", "");
@@ -388,10 +388,10 @@ public static class RqlBuilder
 
         sb.Append("select ");
 
-        if (selectVal.IsMap && !selectVal.AsMap().Get("$js").IsEmpty)
+        if (selectVal.IsMap && !selectVal.AsMap()["$js"].IsEmpty)
         {
             sb.Append('{');
-            sb.Append(selectVal.AsMap().Get("$js").AsString());
+            sb.Append(selectVal.AsMap()["$js"].AsString());
             sb.Append('}');
             sb.Append(' ');
             return;
@@ -410,7 +410,7 @@ public static class RqlBuilder
                 if (!first) sb.Append(", ");
                 first = false;
                 
-                var funcMap = reduceMap.Get(key).AsMap();
+                var funcMap = reduceMap[key].AsMap();
                 BuildReduceFunction(sb, key, funcMap);
             }
             sb.Append(' ');
@@ -436,14 +436,14 @@ public static class RqlBuilder
             if (!first1) sb.Append(", ");
             first1 = false;
 
-            var value = map.Get(key);
+            var value = map[key];
             var escapedAlias = $"'{key.Replace("'", "''")}'";
 
-            if (value.IsMap && !value.AsMap().Get("$load").IsEmpty)
+            if (value.IsMap && !value.AsMap()["$load"].IsEmpty)
             {
-                var loadMap = value.AsMap().Get("$load").AsMap();
-                var targetField = NormalizePath(loadMap.Get("Field").AsString());
-                var pathInTarget = NormalizePath(loadMap.Get("Path").AsString());
+                var loadMap = value.AsMap()["$load"].AsMap();
+                var targetField = NormalizePath(loadMap["Field"].AsString());
+                var pathInTarget = NormalizePath(loadMap["Path"].AsString());
                 sb.Append($"load({targetField}).{pathInTarget} as {escapedAlias}");
             }
             else
@@ -462,7 +462,7 @@ public static class RqlBuilder
 
         foreach (var opKey in funcMap.Keys())
         {
-            var field = NormalizePath(funcMap.Get(opKey).AsString());
+            var field = NormalizePath(funcMap[opKey].AsString());
             var segment = opKey switch
             {
                 "$sum" => $"sum({field}) as {escapedAlias}",

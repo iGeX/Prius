@@ -22,10 +22,10 @@ public static class MapExtensions
         if (orderMap.IsEmpty) 
             yield break;
         
-        for (var i = orderMap.Values.Count() - 1; i >= 0; i--)
+        for (var i = orderMap.Keys().Count() - 1; i >= 0; i--)
         {
             var indexKey = i.ToIndexString();
-            var value = orderMap.Get(indexKey);
+            var value = orderMap[indexKey];
         
             if (!value.IsEmpty)
                 yield return value.AsValue<string>();
@@ -215,12 +215,6 @@ public static class MapExtensions
         mapValue.Switch(_ => { }, onMap, onValue);
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Put(this IMap? map, string key, IMap subMap) => map?.Put(key, new MapValue(subMap));
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void PutEmpty(this IMap? map, string key) => map?.Put(key, Empty.Instance);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static IMap GetAll(this IMap? map, IEnumerable<string> keys)
     {
         if (map == null) 
@@ -229,7 +223,7 @@ public static class MapExtensions
         var dict = new Dictionary<string, object>();
         foreach (var key in keys)
         {
-            var val = map.Get(key);
+            var val = map[key];
             if (!val.IsEmpty) 
                 dict[key] = val;
         }
@@ -240,13 +234,13 @@ public static class MapExtensions
     public static void PutAll(this IMap? map, IEnumerable<string> keys, IMap source)
     {
         foreach (var key in keys)
-            map?.Put(key, source.Get(key));
+            map?[key] = source[key];
     }
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static TMap With<TMap>(this TMap map, string key, MapValue value) where TMap : IMap
     {
-        map.Put(key, value);
+        map[key] = value;
         return map;
     }
     
@@ -254,14 +248,14 @@ public static class MapExtensions
     public static TMap With<TMap>(this TMap map, params (string Key, MapValue Value)[] items) where TMap : IMap
     {
         foreach (var (key, value) in items)
-            map.Put(key, value);
+            map[key] = value;
         return map;
     }
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static TMap With<TMap>(this TMap map, string key, IMap subMap) where TMap : IMap
     {
-        map.Put(key, subMap);
+        map[key] = new MapValue(subMap);
         return map;
     }
     
@@ -269,7 +263,7 @@ public static class MapExtensions
     public static TMap With<TMap>(this TMap map, params (string Key, IMap SubMap)[] items) where TMap : IMap
     {
         foreach (var (key, subMap) in items)
-            map.Put(key, subMap);
+            map[key] = new MapValue(subMap);
         return map;
     }
     
@@ -277,7 +271,7 @@ public static class MapExtensions
     public static TMap With<TMap>(this TMap map, IMap subMap) where TMap : IMap
     {
         foreach (var key in subMap.Keys())
-            map.Put(key, subMap.Get(key));
+            map[key] = subMap[key];
         return map;
     }
     
@@ -304,7 +298,7 @@ public static class MapExtensions
 
             foreach (var key in source.Keys())
             {
-                var value = source.Get(key);
+                var value = source[key];
 
                 value.Switch(
                     onEmpty: _ => { },
@@ -378,7 +372,7 @@ public static class MapExtensions
         foreach (var key in map.Keys(true))
         {
             writer.WritePropertyName(key);
-            writer.WriteMapValue(map.Get(key));
+            writer.WriteMapValue(map[key]);
         }
         writer.WriteEndObject();
     }
@@ -400,7 +394,7 @@ public static class MapExtensions
         foreach (var key in map.Keys(true))
         {
             hash.Add(key);
-            map.Get(key).Switch(
+            map[key].Switch(
                 _ => hash.Add(0),
                 m => hash.Add(m.MapHashCode()),
                 v => hash.Add(v)
@@ -434,8 +428,8 @@ public static class MapExtensions
             foreach (var key in currentLeft.Keys())
             {
                 keysCountLeft++;
-                var valL = currentLeft.Get(key);
-                var valR = currentRight.Get(key);
+                var valL = currentLeft[key];
+                var valR = currentRight[key];
 
                 if (!ValueEquals(valL, valR, stack))
                     return false;
@@ -502,7 +496,7 @@ public static class MapExtensions
             if (path.IsEmpty) 
                 return new MapValue(map);
 
-            var current = map.Get(path.Head);
+            var current = map[path.Head];
             if (path.Tail.IsEmpty) 
                 return current;
 
@@ -526,15 +520,15 @@ public static class MapExtensions
 
             if (path.Tail.IsEmpty)
             {
-                map.Put(path.Head, value);
+                map[path.Head] = value;
                 return;
             }
 
-            var nextValue = map.Get(path.Head);
+            var nextValue = map[path.Head];
             if (!nextValue.IsMap)
             {
-                map.Put(path.Head, new MapValue(EmptyMap.Instance));
-                map = map.Get(path.Head).AsMap();
+                map[path.Head] = new MapValue(EmptyMap.Instance);
+                map = map[path.Head].AsMap();
                 path = path.Tail;
                 continue;
             }

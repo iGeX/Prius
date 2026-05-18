@@ -2,9 +2,9 @@
 
 public static class MapValueTaskExtensions
 {
-    public static async ValueTask<MapValue> Get(this ValueTask<IMap> map, string key) => (await map).Get(key);
+    public static async ValueTask<MapValue> Get(this ValueTask<IMap> map, string key) => (await map)[key];
 
-    public static async ValueTask Put(this ValueTask<IMap> map, string key, MapValue value) => (await map).Put(key, value);
+    public static async ValueTask Put(this ValueTask<IMap> map, string key, MapValue value) => (await map)[key] = value;
 
     public static async ValueTask<IMap> GetAll(this ValueTask<IMap> map, IEnumerable<string> keys) => (await map).GetAll(keys);
 
@@ -12,7 +12,7 @@ public static class MapValueTaskExtensions
 
     public static async ValueTask<bool> IsValue(this ValueTask<MapValue> mapValue) => (await mapValue).IsValue();
     
-    public static ValueTask PutEmpty(this ValueTask<IMap> map, string key) => map.Put(key, Empty.Instance);
+    public static async ValueTask PutEmpty(this ValueTask<IMap> map, string key) => (await map)[key] = Empty.Instance;
 
     public static async ValueTask<object?> AsValue(this ValueTask<MapValue> mapValue) => (await mapValue).AsValue();
 

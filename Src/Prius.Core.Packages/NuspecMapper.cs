@@ -24,14 +24,14 @@ public static class NuspecMapper
             
             if (element.HasElements || element.HasAttributes)
             {
-                info.Put(name, ParseComplexElement(element));
+                info[name] = new MapValue(ParseComplexElement(element));
                 continue;
             }
             
-            info.Put(name, element.Value);
+            info[name] = element.Value;
         }
 
-        rootMap.Put("Info", info);
+        rootMap["Info"] = new MapValue(info);
 
         var dependenciesNode = metadata.Element(ns + "dependencies");
         if (dependenciesNode == null)
@@ -43,12 +43,12 @@ public static class NuspecMapper
         if (groups.Count > 0)
         {
             foreach (var group in groups)
-                depsMap.Put(group.Attribute("targetFramework")?.Value ?? "any", ParseDependencyGroup(group, ns));
+                depsMap[group.Attribute("targetFramework")?.Value ?? "any"] = new MapValue(ParseDependencyGroup(group, ns));
         }
         else
-            depsMap.Put("any", ParseDependencyGroup(dependenciesNode, ns));
+            depsMap["any"] = new MapValue(ParseDependencyGroup(dependenciesNode, ns));
 
-        rootMap.Put("Dependencies", depsMap);
+        rootMap["Dependencies"] = new MapValue(depsMap);
 
         return rootMap;
     }
@@ -58,16 +58,16 @@ public static class NuspecMapper
         var map = DictionaryMap.New;
 
         foreach (var attr in element.Attributes())
-            map.Put(attr.Name.LocalName, attr.Value);
+            map[attr.Name.LocalName] = attr.Value;
 
         foreach (var child in element.Elements())
         {
             var mapValue = child.HasElements || child.HasAttributes ? new MapValue(ParseComplexElement(child)) : (MapValue) child.Value;
-            map.Put(child.Name.LocalName, mapValue);
+            map[child.Name.LocalName] = mapValue;
         }
         
         if (!element.HasElements && !string.IsNullOrWhiteSpace(element.Value))
-            map.Put("value", element.Value);
+            map["value"] = element.Value;
 
         return map;
     }
@@ -86,10 +86,10 @@ public static class NuspecMapper
             {
                 if (attr.Name.LocalName == "id")
                     continue;
-                depInfo.Put(attr.Name.LocalName, attr.Value);
+                depInfo[attr.Name.LocalName] = attr.Value;
             }
 
-            groupMap.Put(id, depInfo);
+            groupMap[id] = new MapValue(depInfo);
         }
         return groupMap;
     }

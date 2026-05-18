@@ -14,7 +14,7 @@ foreach (var arg in args)
     if (path.Tail.IsEmpty)
         continue;
 
-    targets.Put(path.Head, path.Tail.ToString());
+    targets[path.Head] = path.Tail.ToString();
 }
 
 var repo = new DirectoryPackageRepository("./packages");

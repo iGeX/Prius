@@ -9,26 +9,6 @@ public sealed class StackedMap(IEnumerable<IMap> maps) : IMap
 
     public bool IsEmpty => !Keys().Any();
     
-    public MapValue Get(string key)
-    {
-        if (string.IsNullOrEmpty(key)) return Empty.Instance;
-        
-        foreach (var map in Maps.Reverse())
-        {
-            var result = map.Get(key);
-            if (!result.IsEmpty)
-                return result;
-        }
-
-        return Empty.Instance;
-    }
-
-    public void Put(string key, MapValue value)
-    {
-        foreach (var map in Maps.Reverse())
-            map.Put(key, value);
-    }
-
     public IEnumerable<string> Keys(bool? ascending = null)
     {
         var enm = Maps.SelectMany(m => m.Keys()).Distinct();
@@ -37,7 +17,27 @@ public sealed class StackedMap(IEnumerable<IMap> maps) : IMap
         return enm;
     }
 
-    public IEnumerable<MapValue> Values => Keys().Select(Get);
+    public MapValue this[string key]
+    {
+        get
+        {
+            if (string.IsNullOrEmpty(key)) return Empty.Instance;
+        
+            foreach (var map in Maps.Reverse())
+            {
+                var result = map[key];
+                if (!result.IsEmpty)
+                    return result;
+            }
+
+            return Empty.Instance;
+        }
+        set
+        {
+            foreach (var map in Maps.Reverse())
+                map[key] = value;
+        }
+    }
 
     public static StackedMap New(params IMap[] maps) => New((IEnumerable<IMap>)maps);
     

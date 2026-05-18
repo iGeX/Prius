@@ -42,7 +42,7 @@ internal static class RavenJsonExtensions
             }
 
             var key = current.KeysEnumerator.Current;
-            var value = current.Map.Get(key);
+            var value = current.Map[key];
 
             if (value.IsEmpty) continue;
 

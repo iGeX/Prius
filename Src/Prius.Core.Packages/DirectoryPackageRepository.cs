@@ -53,7 +53,7 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
         foreach (var tfmStore in _manifests.Values)
         {
             foreach (var pkgName in tfmStore.Keys)
-                result.Put(pkgName, true);
+                result[pkgName] = true;
         }
 
         return result;
@@ -77,9 +77,9 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
                     continue;
                 
                 foreach (var version in pkgStore.Keys)
-                    versions.Put(version, true);
+                    versions[version] = true;
             }
-            result.Put(pkgName, versions);
+            result[pkgName] = new MapValue(versions);
         }
         return result;
     }
@@ -93,7 +93,7 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
 
         foreach (var pkgName in packages.Keys())
         {
-            var version = packages.Get(pkgName).AsValue<string>();
+            var version = packages[pkgName].AsValue<string>();
             var tfmsToSearch = isAny ? _manifests.Keys : compatibleTfms;
 
             foreach (var currentTfm in tfmsToSearch)
@@ -103,7 +103,7 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
                     !pkgStore.TryGetValue(version, out var manifest))
                     continue;
                 
-                result.Put(pkgName, manifest);
+                result[pkgName] = new MapValue(manifest);
                 break;
             }
         }
@@ -148,9 +148,9 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
             var tracked = new List<(string Tfm, string Pkg, string Ver)>();
             var foundTfms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            foreach (var tfm in map.Get("Dependencies").AsMap().Keys())
+            foreach (var tfm in map["Dependencies"].AsMap().Keys())
                 foundTfms.Add(tfm);
-            foreach (var tfm in map.Get("Assets").AsMap().Get("lib").AsMap().Keys())
+            foreach (var tfm in map["Assets"].AsMap()["lib"].AsMap().Keys())
                 foundTfms.Add(tfm);
 
             if (foundTfms.Count == 0)
@@ -166,7 +166,7 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
             }
 
             _fileTracker[path] = tracked;
-            IndexBlobs(map.Get("Assets").AsMap(), path, string.Empty);
+            IndexBlobs(map["Assets"].AsMap(), path, string.Empty);
         }
         catch (Exception ex)
         {
@@ -200,13 +200,13 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
     {
         foreach (var key in assets.Keys())
         {
-            var value = assets.Get(key);
+            var value = assets[key];
             if (!value.IsMap) 
                 continue;
 
             var subMap = value.AsMap();
             var entryName = string.IsNullOrEmpty(currentPath) ? key : $"{currentPath}/{key}";
-            var hash = subMap.Get("hash").AsValue<string>();
+            var hash = subMap["hash"].AsValue<string>();
 
             if (string.IsNullOrEmpty(hash)) 
                 IndexBlobs(subMap, zipPath, entryName);

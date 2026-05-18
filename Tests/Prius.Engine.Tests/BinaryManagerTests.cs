@@ -39,7 +39,7 @@ public sealed class BinaryManagerTests : IDisposable
 
         var accessor = manager.Get("path/1");
         Assert.True(accessor.Exists);
-        Assert.Equal("text", accessor.Metadata.AsMap().Get("Type").AsString());
+        Assert.Equal("text", accessor.Metadata.AsMap()["Type"].AsString());
 
         using (var stream = accessor.OpenStream())
         using (var reader = new StreamReader(stream))
@@ -238,12 +238,12 @@ public sealed class BinaryManagerTests : IDisposable
     public async Task Should_Crash_With_IOException_Under_Concurrent_Disk_IO()
     {
         var manager = new BinaryManager(_tempDir);
-        var path = "io/crash/path";
-        var data = Encoding.UTF8.GetBytes("CRASH_TEST_LONG_STRING_FOR_IO_ENGAGEMENT");
+        const string Path = "io/crash/path";
+        var data = "CRASH_TEST_LONG_STRING_FOR_IO_ENGAGEMENT"u8.ToArray();
         
-        manager.Store(path, Empty.Instance, new MemoryStream(data));
+        manager.Store(Path, Empty.Instance, new MemoryStream(data));
 
-        var accessor = manager.Get(path);
+        var accessor = manager.Get(Path);
         var cts = new CancellationTokenSource();
 
         var spillTask = Task.Run(() =>

@@ -10,24 +10,18 @@ internal sealed class ReadOnlyMap(IMap source) : IMap
     
     public bool IsEmpty => _source.IsEmpty;
 
-    public MapValue Get(string key) => _source.Get(key).Match(
-        empty => empty,
-        map => new MapValue(new ReadOnlyMap(map)),
-        value => value.AsMapValue()
-    );
-    
-    public IEnumerable<MapValue> Values => _source.Values.Select(v => v.Match(
-        e => e,
-        m => new MapValue(new ReadOnlyMap(m)),
-        val => val.AsMapValue()
-    ));
+    public IEnumerable<string> Keys(bool? ascending = null) => _source.Keys(ascending);
 
-    public void Put(string key, MapValue value)
+    public MapValue this[string key]
     {
+        get => _source[key].Match(
+            empty => empty,
+            map => new MapValue(new ReadOnlyMap(map)),
+            value => value.AsMapValue()
+        );
+        set { }
     }
 
-    public IEnumerable<string> Keys(bool? ascending = null) => _source.Keys(ascending);
-    
     public bool Equals(IMap? other) => this.DeepEquals(other);
     
     public override bool Equals(object? obj) => obj is IMap other && this.DeepEquals(other);

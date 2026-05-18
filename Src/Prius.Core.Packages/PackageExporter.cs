@@ -21,23 +21,23 @@ public static class PackageExporter
         await using (var writer = new StreamWriter(await nuspecEntry.OpenAsync(ct)))
             await writer.WriteAsync(GenerateNuspec(manifest));
         
-        await PackAssetsAsync(archive, manifest.Get("Assets").AsMap(), repository, string.Empty, ct);
+        await PackAssetsAsync(archive, manifest["Assets"].AsMap(), repository, string.Empty, ct);
     }
 
     private static string GenerateNuspec(IMap manifest)
     {
-        var info = manifest.Get("Info").AsMap();
+        var info = manifest["Info"].AsMap();
         var ns = XNamespace.Get("http://microsoft.com");
         var metadata = new XElement(ns + "metadata");
 
         foreach (var key in info.Keys())
         {
-            if (info.Get(key).IsMap) 
+            if (info[key].IsMap) 
                 continue;
-            metadata.Add(new XElement(ns + key, info.Get(key).AsValue<string>()));
+            metadata.Add(new XElement(ns + key, info[key].AsValue<string>()));
         }
 
-        var deps = manifest.Get("Dependencies").AsMap();
+        var deps = manifest["Dependencies"].AsMap();
         if (deps.IsEmpty)
             return new XDocument(new XElement(ns + "package", metadata)).ToString();
         
@@ -45,13 +45,13 @@ public static class PackageExporter
         foreach (var tfm in deps.Keys())
         {
             var group = new XElement(ns + "group", new XAttribute("targetFramework", tfm));
-            var groupMap = deps.Get(tfm).AsMap();
+            var groupMap = deps[tfm].AsMap();
             foreach (var depId in groupMap.Keys())
             {
-                var depInfo = groupMap.Get(depId).AsMap();
+                var depInfo = groupMap[depId].AsMap();
                 var depElement = new XElement(ns + "dependency", new XAttribute("id", depId));
                 foreach (var attr in depInfo.Keys())
-                    depElement.Add(new XAttribute(attr, depInfo.Get(attr).AsValue<string>()));
+                    depElement.Add(new XAttribute(attr, depInfo[attr].AsValue<string>()));
                     
                 group.Add(depElement);
             }
@@ -66,12 +66,12 @@ public static class PackageExporter
     {
         foreach (var key in assets.Keys())
         {
-            var value = assets.Get(key);
+            var value = assets[key];
             if (!value.IsMap) continue;
 
             var subMap = value.AsMap();
             var nextPath = string.IsNullOrEmpty(currentPath) ? key : $"{currentPath}/{key}";
-            var hash = subMap.Get("hash").AsValue<string>();
+            var hash = subMap["hash"].AsValue<string>();
 
             if (string.IsNullOrEmpty(hash))
             {

@@ -14,27 +14,6 @@ public sealed class ListMap(IList list) : IMap
 
     public bool IsEmpty => _list.Count is 0;
     
-    public IEnumerable<MapValue> Values => _list.Cast<object>().Select(MapExtensions.AsMapValue);
-
-    public MapValue Get(string key)
-    {
-        if (int.TryParse(key, out var index) && index >= 0 && index < _list.Count)
-            return _list[index].AsMapValue();
-        return Empty.Instance;
-    }
-
-    public void Put(string key, MapValue value)
-    {
-        if (!int.TryParse(key, out var index) || index < 0 || index >= _list.Count)
-            return;
-
-        value.Switch(
-            _ => _list[index] = null,
-            map => _list[index] = map.DeepCopy(),
-            val => _list[index] = val
-        );
-    }
-
     public IEnumerable<string> Keys(bool? ascending = null)
     {
         var result = Enumerable.Range(0, _list.Count);
@@ -43,7 +22,28 @@ public sealed class ListMap(IList list) : IMap
 
         return result.Select(i => i.ToString());
     }
-    
+
+    public MapValue this[string key]
+    {
+        get
+        {
+            if (int.TryParse(key, out var index) && index >= 0 && index < _list.Count)
+                return _list[index].AsMapValue();
+            return Empty.Instance;
+        }
+        set
+        {
+            if (!int.TryParse(key, out var index) || index < 0 || index >= _list.Count)
+                return;
+
+            value.Switch(
+                _ => _list[index] = null,
+                map => _list[index] = map.DeepCopy(),
+                val => _list[index] = val
+            );
+        }
+    }
+
     public bool Equals(IMap? other) => this.DeepEquals(other);
 
     public override bool Equals(object? obj) => obj is IMap other && this.DeepEquals(other);

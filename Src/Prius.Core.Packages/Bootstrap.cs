@@ -40,24 +40,24 @@ public sealed class Bootstrap
             await _runtime.Prepare();
 
             var snapshot = await new PackageResolver(_repository).Resolve(_runtime.Tfm, StartupTargets);
-            var order = snapshot.Get("Order").AsMap();
-            var manifests = snapshot.Get("Manifests").AsMap();
+            var order = snapshot["Order"].AsMap();
+            var manifests = snapshot["Manifests"].AsMap();
 
             var runtimesPlan = DictionaryMap.New;
             var contentPlan = DictionaryMap.New;
 
             foreach (var index in order.Keys(true))
             {
-                var pkgId = order.Get(index).AsString();
-                var manifest = manifests.Get(pkgId).AsMap();
-                var assets = manifest.Get("Assets").AsMap();
+                var pkgId = order[index].AsString();
+                var manifest = manifests[pkgId].AsMap();
+                var assets = manifest["Assets"].AsMap();
 
                 Console.WriteLine($"[LOAD] {pkgId} ({manifest.DeepGet("Info/version").AsString()})");
                 
                 await LoadLibs(assets);
                 
-                runtimesPlan.With(assets.Get("runtimes").AsMap());
-                CollectContent(assets.Get("contentFiles").AsMap(), contentPlan);
+                runtimesPlan.With(assets["runtimes"].AsMap());
+                CollectContent(assets["contentFiles"].AsMap(), contentPlan);
             }
 
             await ExtractPlan(runtimesPlan, "runtimes");
@@ -92,9 +92,9 @@ public sealed class Bootstrap
 
     private async ValueTask LoadLibs(IMap assets)
     {
-        var libs = assets.Get("lib").AsMap();
+        var libs = assets["lib"].AsMap();
         var libMap = FrameworkConstants.GetCompatible(_runtime.Tfm)
-            .Select(tfm => libs.Get(tfm).AsMap())
+            .Select(tfm => libs[tfm].AsMap())
             .FirstOrDefault(m => !m.IsEmpty) ?? EmptyMap.Instance;
 
         await LoadAssembliesRecursive(libMap);
@@ -104,7 +104,7 @@ public sealed class Bootstrap
     {
         foreach (var key in map.Keys())
         {
-            var val = map.Get(key);
+            var val = map[key];
             if (!val.IsMap)
                 continue;
 
@@ -114,7 +114,7 @@ public sealed class Bootstrap
                 continue;
             }
 
-            var hash = val.AsMap().Get("hash").AsString();
+            var hash = val.AsMap()["hash"].AsString();
             if (string.IsNullOrEmpty(hash))
                 continue;
 
@@ -127,9 +127,9 @@ public sealed class Bootstrap
     {
         foreach (var tfmKey in contentFiles.Keys())
         {
-            var tfmMap = contentFiles.Get(tfmKey).AsMap();
+            var tfmMap = contentFiles[tfmKey].AsMap();
             foreach (var specKey in tfmMap.Keys())
-                plan.With(tfmMap.Get(specKey).AsMap());
+                plan.With(tfmMap[specKey].AsMap());
         }
     }
 
@@ -145,12 +145,12 @@ public sealed class Bootstrap
     {
         foreach (var key in map.Keys())
         {
-            var val = map.Get(key);
+            var val = map[key];
             if (!val.IsMap)
                 continue;
 
             var currentPath = Path.Combine(relativePath, key);
-            var hash = val.AsMap().Get("hash").AsString();
+            var hash = val.AsMap()["hash"].AsString();
 
             if (string.IsNullOrEmpty(hash))
             {

@@ -9,7 +9,7 @@ internal sealed class MapDebugView(IMap map)
 
     [DebuggerBrowsable(DebuggerBrowsableState.RootHidden)]
     public MapEntryProxy[] Items => _map.Keys()
-        .Select(key => new MapEntryProxy(key, _map.Get(key)))
+        .Select(key => new MapEntryProxy(key, _map[key]))
         .ToArray();
 }
 

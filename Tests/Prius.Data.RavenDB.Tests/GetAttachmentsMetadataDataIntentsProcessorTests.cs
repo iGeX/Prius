@@ -32,15 +32,15 @@ public class GetAttachmentsMetadataDataIntentsProcessorTests : AbstractDataInten
             Assert.True(context.PutCalls.ContainsKey("output/metadata"));
             var metadata = context.PutCalls["output/metadata"].AsMap();
             
-            var avatarValue = metadata.Get("avatar.png");
+            var avatarValue = metadata["avatar.png"];
             Assert.False(avatarValue.IsEmpty);
             var avatarMeta = avatarValue.AsMap();
-            Assert.Equal("image/png", avatarMeta.Get("ContentType").AsString());
+            Assert.Equal("image/png", avatarMeta["ContentType"].AsString());
             
-            var resumeValue = metadata.Get("resume.pdf");
+            var resumeValue = metadata["resume.pdf"];
             Assert.False(resumeValue.IsEmpty);
             var resumeMeta = resumeValue.AsMap();
-            Assert.Equal("application/pdf", resumeMeta.Get("ContentType").AsString());
+            Assert.Equal("application/pdf", resumeMeta["ContentType"].AsString());
             
             return Task.CompletedTask;
         });

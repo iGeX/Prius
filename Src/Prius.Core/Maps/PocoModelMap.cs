@@ -36,25 +36,25 @@ public sealed class PocoModelMap : IMap
         return keys;
     }
 
-    public IEnumerable<MapValue> Values => _props.Select(p => p.GetValue(_model).AsMapValue());
-
-    public MapValue Get(string key)
+    public MapValue this[string key]
     {
-        var prop = _props.FirstOrDefault(p => string.Equals(p.Name, key, StringComparison.Ordinal));
-        return prop != null ? prop.GetValue(_model).AsMapValue() : Empty.Instance;
-    }
-
-    public void Put(string key, MapValue value)
-    {
-        var prop = _props.FirstOrDefault(p => string.Equals(p.Name, key, StringComparison.Ordinal));
-        if (prop == null || !prop.CanWrite) 
-            return;
+        get
+        {
+            var prop = _props.FirstOrDefault(p => string.Equals(p.Name, key, StringComparison.Ordinal));
+            return prop != null ? prop.GetValue(_model).AsMapValue() : Empty.Instance;
+        }
+        set
+        {
+            var prop = _props.FirstOrDefault(p => string.Equals(p.Name, key, StringComparison.Ordinal));
+            if (prop == null || !prop.CanWrite) 
+                return;
         
-        value.Switch(
-            _ => prop.SetValue(_model, null),
-            map => prop.SetValue(_model, map.DeepCopy()),
-            val => prop.SetValue(_model, val)
-        );
+            value.Switch(
+                _ => prop.SetValue(_model, null),
+                map => prop.SetValue(_model, map.DeepCopy()),
+                val => prop.SetValue(_model, val)
+            );
+        }
     }
     
     private class PocoAccessor(PropertyInfo prop)

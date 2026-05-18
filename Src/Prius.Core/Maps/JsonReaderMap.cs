@@ -24,33 +24,33 @@ public sealed class JsonReaderMap(ReadOnlyMemory<byte> data) : IMap
             return !reader.Read() || reader.TokenType == JsonTokenType.EndObject;
         }
     }
-
-    public IEnumerable<MapValue> Values => Materialize().Values;
-
+    
     public IEnumerable<string> Keys(bool? ascending = null) => Materialize().Keys(ascending);
 
-    public MapValue Get(string key)
+    public MapValue this[string key]
     {
-        if (_materialized != null) return _materialized.Get(key);
-
-        var reader = new Utf8JsonReader(data.Span);
-        if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
-            return new MapValue();
-
-        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+        get
         {
-            if (reader.TokenType == JsonTokenType.PropertyName && reader.ValueTextEquals(key))
+            if (_materialized != null) return _materialized[key];
+
+            var reader = new Utf8JsonReader(data.Span);
+            if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+                return new MapValue();
+
+            while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
             {
-                reader.Read();
-                return ReadValue(ref reader);
+                if (reader.TokenType == JsonTokenType.PropertyName && reader.ValueTextEquals(key))
+                {
+                    reader.Read();
+                    return ReadValue(ref reader);
+                }
+                reader.Skip();
             }
-            reader.Skip();
+
+            return new MapValue();
         }
-
-        return new MapValue();
+        set => Materialize()[key] = value;
     }
-
-    public void Put(string key, MapValue value) => Materialize().Put(key, value);
 
     public bool Equals(IMap? other) => this.DeepEquals(other);
 
@@ -70,7 +70,7 @@ public sealed class JsonReaderMap(ReadOnlyMemory<byte> data) : IMap
                 
                 var key = reader.GetString()!;
                 reader.Read();
-                map.Put(key, ReadValue(ref reader));
+                map[key] = ReadValue(ref reader);
             }
         }
 

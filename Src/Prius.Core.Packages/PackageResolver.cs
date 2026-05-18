@@ -37,24 +37,24 @@ public sealed class PackageResolver(IPackageRepository repository)
 
             foreach (var id in queue.Keys())
             {
-                var manifestValue = currentManifests.Get(id);
+                var manifestValue = currentManifests[id] ;
                 if (manifestValue.IsEmpty) continue;
 
                 var manifest = manifestValue.AsMap();
-                var version = queue.Get(id).AsString();
+                var version = queue[id].AsString();
                 
-                var existing = resolvedManifests.Get(id).AsMap();
+                var existing = resolvedManifests[id].AsMap();
                 if (!existing.IsEmpty)
                 {
                     var existingVer = existing.DeepGet("Info/version").AsString();
                     if (string.CompareOrdinal(existingVer, version) >= 0) continue;
                 }
 
-                resolvedManifests.Put(id, manifest);
+                resolvedManifests[id] = new MapValue(manifest);
                 
                 var deps = GetCompatibleDeps(manifest, tfm);
                 foreach (var depId in deps.Keys())
-                    nextQueue.Put(depId, deps.Get(depId).AsMap().Get("version").AsString());
+                    nextQueue[depId] = deps[depId].AsMap()["version"].AsString();
             }
             queue = nextQueue;
         }
@@ -72,27 +72,27 @@ public sealed class PackageResolver(IPackageRepository repository)
 
     private static void Sort(string id, string tfm, IMap manifests, IMap order, IMap visited)
     {
-        if (visited.Get(id).AsBool()) return;
-        visited.Put(id, true);
+        if (visited[id].AsBool()) return;
+        visited[id] = true;
 
-        var manifest = manifests.Get(id).AsMap();
+        var manifest = manifests[id].AsMap();
         var deps = GetCompatibleDeps(manifest, tfm);
 
         foreach (var depId in deps.Keys())
         {
-            if (!manifests.Get(depId).IsEmpty)
+            if (!manifests[depId].IsEmpty)
                 Sort(depId, tfm, manifests, order, visited);
         }
 
-        order.Put(order.Values.Count().ToIndexString(), id);
+        order[order.Keys().Count().ToIndexString()] = id;
     }
 
     private static IMap GetCompatibleDeps(IMap manifest, string tfm)
     {
-        var allDeps = manifest.Get("Dependencies").AsMap();
+        var allDeps = manifest["Dependencies"].AsMap();
         foreach (var compatibleTfm in FrameworkConstants.GetCompatible(tfm))
         {
-            var branch = allDeps.Get(compatibleTfm).AsMap();
+            var branch = allDeps[compatibleTfm].AsMap();
             if (!branch.IsEmpty) 
                 return branch;
         }

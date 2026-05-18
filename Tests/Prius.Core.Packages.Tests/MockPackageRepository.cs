@@ -29,8 +29,8 @@ public sealed class MockPackageRepository : IPackageRepository
         {
             var vers = DictionaryMap.New;
             foreach (var key in _manifests.Keys.Where(k => k.StartsWith(id + "_")))
-                vers.Put(key.Split('_')[1], true);
-            res.Put(id, vers);
+                vers[key.Split('_')[1]] = true;
+            res[id] = new MapValue(vers);
         }
         return new(res);
     }
@@ -40,10 +40,11 @@ public sealed class MockPackageRepository : IPackageRepository
         var res = DictionaryMap.New;
         foreach (var p in packages.Keys())
         {
-            var key = $"{p}_{packages.Get(p).AsString()}";
-            if (_manifests.TryGetValue(key, out var m)) res.Put(p, m);
+            var key = $"{p}_{packages[p].AsString()}";
+            if (_manifests.TryGetValue(key, out var m)) 
+                res[p] = new MapValue(m);
         }
-        return new(res);
+        return new ValueTask<IMap>(res);
     }
 
     public ValueTask<Stream> OpenStream(string hash, CancellationToken ct) => 

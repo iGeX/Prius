@@ -21,11 +21,7 @@ public interface IMap : IEquatable<IMap>
 {
     bool IsEmpty { get; }
 
-    IEnumerable<MapValue> Values { get; }
-
     IEnumerable<string> Keys(bool? ascending = null);
-
-    MapValue Get(string key);
-
-    void Put(string key, MapValue value);
+    
+    MapValue this[string key] { get; set; }
 }

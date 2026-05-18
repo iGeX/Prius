@@ -154,8 +154,8 @@ public sealed class DataIntentsProcessor(
         foreach (var pair in parameters)
             query.AddParameter(pair.Key, pair.Value);
 
-        var hasGroupBy = !i.QueryMap.Get("GroupBy").IsEmpty;
-        var hasFacets = !i.QueryMap.Get("Facets").IsEmpty;
+        var hasGroupBy = !i.QueryMap["GroupBy"].IsEmpty;
+        var hasFacets = !i.QueryMap["Facets"].IsEmpty;
 
         var result = (hasFacets && !hasGroupBy)
             ? await ExecuteFacetQuery(query, i.Token)
@@ -179,7 +179,7 @@ public sealed class DataIntentsProcessor(
                     ("Range", new MapValue(item.Range)),
                     ("Count", new MapValue(item.Count))
                 );
-                valuesList.Put(idx.ToIndexString(), itemMap.AsMapValue());
+                valuesList[idx.ToIndexString()] = itemMap.AsMapValue();
             }
 
             var facetData = DictionaryMap.New.With(
@@ -187,7 +187,7 @@ public sealed class DataIntentsProcessor(
                 ("Values", valuesList.AsMapValue())
             );
 
-            facetsMap.Put(pair.Key, facetData.AsMapValue());
+            facetsMap[pair.Key] = facetData.AsMapValue();
         }
 
         return DictionaryMap.New.With(
@@ -208,7 +208,7 @@ public sealed class DataIntentsProcessor(
         var highlightsMap = DictionaryMap.New;
         var includesMap = DictionaryMap.New;
         
-        var groupByMap = queryMap.Get("GroupBy").AsMap();
+        var groupByMap = queryMap["GroupBy"].AsMap();
         var hasGroupBy = !groupByMap.IsEmpty;
 
         for (var idx = 0; idx < results.Length; idx++)
@@ -239,8 +239,8 @@ public sealed class DataIntentsProcessor(
             if (string.IsNullOrEmpty(id))
                 continue;
             
-            items.Put(id, (await json.AsJsonReaderMap()).AsMapValue());
-            order.Put(idx.ToIndexString(), new MapValue(id));
+            items[id] = (await json.AsJsonReaderMap()).AsMapValue();
+            order[idx.ToIndexString()] = new MapValue(id);
         }
         
         if (queryResult.Includes != null)
@@ -248,13 +248,13 @@ public sealed class DataIntentsProcessor(
             foreach (var propertyName in queryResult.Includes.GetPropertyNames())
             {
                 if (queryResult.Includes.TryGet(propertyName, out BlittableJsonReaderObject linkedDoc)) 
-                    includesMap.Put(propertyName, (await linkedDoc.AsJsonReaderMap()).AsMapValue());
+                    includesMap[propertyName] = (await linkedDoc.AsJsonReaderMap()).AsMapValue();
             }
         }
         
-        if (!queryMap.Get("Highlight").IsEmpty && queryResult.Highlightings != null)
+        if (!queryMap["Highlight"].IsEmpty && queryResult.Highlightings != null)
         {
-            var originalField = queryMap.Get("Highlight").AsMap().Get("Field").AsString();
+            var originalField = queryMap["Highlight"].AsMap()["Field"].AsString();
             if (queryResult.Highlightings.TryGetValue(originalField, out var docsWithHighlights))
             {
                 foreach (var pair in docsWithHighlights)
@@ -263,8 +263,8 @@ public sealed class DataIntentsProcessor(
                     var fragments = pair.Value;
                     var fragmentsList = DictionaryMap.New;
                     for (var fIdx = 0; fIdx < fragments.Length; fIdx++)
-                        fragmentsList.Put(fIdx.ToIndexString(), new MapValue(fragments[fIdx]));
-                    highlightsMap.Put(docId, DictionaryMap.New.With(originalField, fragmentsList.AsMapValue()).AsMapValue());
+                        fragmentsList[fIdx.ToIndexString()] = new MapValue(fragments[fIdx]);
+                    highlightsMap[docId] = DictionaryMap.New.With(originalField, fragmentsList.AsMapValue()).AsMapValue();
                 }
             }
         }
@@ -398,7 +398,7 @@ public sealed class DataIntentsProcessor(
         
         var result = DictionaryMap.New;
         foreach (var counter in counters)
-            result.Put(counter.Key, counter.Value.AsMapValue());
+            result[counter.Key] = counter.Value.AsMapValue();
 
         ReportSuccess(i, result.AsMapValue());
     }
@@ -428,7 +428,7 @@ public sealed class DataIntentsProcessor(
             if (!attachmentObj.TryGet("Name", out string name)) 
                 continue;
 
-            result.Put(name, (await attachmentObj.AsJsonReaderMap()).AsMapValue());
+            result[name] = (await attachmentObj.AsJsonReaderMap()).AsMapValue();
         }
 
         ReportSuccess(i, result.AsMapValue());

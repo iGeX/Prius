@@ -89,7 +89,7 @@ public class DeleteDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         {
             Assert.False(context.PutCalls.ContainsKey("success/1"));
             Assert.True(context.PutCalls.ContainsKey("failures/1"));
-            Assert.Equal("ConcurrencyException", context.PutCalls["failures/1"].AsMap().Get("Type").AsString());
+            Assert.Equal("ConcurrencyException", context.PutCalls["failures/1"].AsMap()["Type"].AsString());
             return Task.CompletedTask;
         });
     }

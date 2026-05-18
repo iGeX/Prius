@@ -5,9 +5,7 @@ public interface IAsyncMap
     ValueTask<bool> IsEmpty { get; }
     
     ValueTask<long> Size { get; }
-
-    IAsyncEnumerable<MapValue> Values { get; }
-
+    
     IAsyncEnumerable<string> Keys(bool? ascending = null);
 
     ValueTask<MapValue> Get(string key);

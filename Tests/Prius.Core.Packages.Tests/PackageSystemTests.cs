@@ -55,13 +55,13 @@ public sealed class PackageSystemTests
 
         // Act
         var snapshot = await resolver.Resolve(Tfm, targets, TestContext.Current.CancellationToken);
-        var order = snapshot.Get("Order").AsMap();
-        var manifests = snapshot.Get("Manifests").AsMap();
+        var order = snapshot["Order"].AsMap();
+        var manifests = snapshot["Manifests"].AsMap();
 
         // Assert
-        Assert.Equal("Common", order.Get("0").AsString());
+        Assert.Equal("Common", order["0"].AsString());
         Assert.Equal("2.0.0", manifests.DeepGet("Common/Info/version").AsString());
-        Assert.Equal(3, order.Values.Count());
+        Assert.Equal(3, order.Keys().Count());
     }
 
     [Fact]
@@ -77,10 +77,10 @@ public sealed class PackageSystemTests
 
         // Act
         var snapshot = await resolver.Resolve(Tfm, DictionaryMap.New.With("AnyLib", "1.0.0"), TestContext.Current.CancellationToken);
-        var order = snapshot.Get("Order").AsMap();
+        var order = snapshot["Order"].AsMap();
 
         // Assert
-        Assert.Contains(order.Values.Select(v => v.AsString()), x => x == "Shared.Core");
+        Assert.Contains(order.Keys().Select(k => order[k].AsString()), x => x == "Shared.Core");
     }
 
     private static MemoryStream CreateTestNupkg(string id, string version, string content)
@@ -120,9 +120,9 @@ public sealed class PackageSystemTests
         var tfmGroup = DictionaryMap.New;
 
         foreach (var (depId, depVer) in deps)
-            tfmGroup.Put(depId, DictionaryMap.New.With("version", depVer));
+            tfmGroup[depId] = new MapValue(DictionaryMap.New.With("version", depVer));
         
-        dependencies.Put(tfm, tfmGroup);
+        dependencies[tfm] = new MapValue(tfmGroup);
 
         return DictionaryMap.New
             .With("Info", info)

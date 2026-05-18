@@ -17,7 +17,7 @@ public class MapTests
         Assert.True(result.IsLong);
         Assert.Equal(42L, (long)result);
         
-        Assert.True(map.Get("orders").IsMap);
+        Assert.True(map["orders"].IsMap);
     }
 
     [Fact]
@@ -27,10 +27,10 @@ public class MapTests
         var jsonMap = JsonReaderMap.From(Json);
         
         var dictMap = DictionaryMap.New;
-        dictMap.Put("id", 1L);
+        dictMap["id"] = 1L;
         var sub = DictionaryMap.New;
-        sub.Put("status", "active");
-        dictMap.Put("data", sub);
+        sub["status"] = "active";
+        dictMap["data"] = new MapValue(sub);
         
         Assert.True(jsonMap.DeepEquals(dictMap));
         Assert.Equal("active", jsonMap.DeepGet("data/status").AsValue<string>());
@@ -42,8 +42,8 @@ public class MapTests
         var map1 = DictionaryMap.New;
         var map2 = DictionaryMap.New;
 
-        map1.Put("val", 100L);
-        map2.Put("val", "100");
+        map1["val"] = 100L;
+        map2["val"] = "100";
         
         Assert.True(map1.DeepEquals(map2));
     }
@@ -65,13 +65,13 @@ public class MapTests
     public void Put_EmptyValue_Should_RemoveKey()
     {
         var map = DictionaryMap.New;
-        map.Put("temp", "to_delete");
+        map["temp"] = "to_delete";
         Assert.False(map.IsEmpty);
 
-        map.PutEmpty("temp");
+        map["temp"] = Empty.Instance;
         
         Assert.True(map.IsEmpty);
-        Assert.True(map.Get("temp").IsEmpty);
+        Assert.True(map["temp"].IsEmpty);
     }
 
     [Fact]
@@ -82,7 +82,7 @@ public class MapTests
         map.DeepPut("path", 1L);
         map.DeepPut("path/sub", 2L);
 
-        Assert.True(map.Get("path").IsMap);
+        Assert.True(map["path"].IsMap);
         Assert.Equal(2L, map.DeepGet("path/sub").AsValue<long>());
     }
 
@@ -94,9 +94,9 @@ public class MapTests
         
         Assert.IsType<JsonReaderMap>(lazyMap);
 
-        lazyMap.Put("new", 1L);
+        lazyMap["new"] = 1L;
         
-        Assert.Equal("value", lazyMap.Get("key").AsValue<string>());
-        Assert.Equal(1L, lazyMap.Get("new").AsValue<long>());
+        Assert.Equal("value", lazyMap["key"].AsValue<string>());
+        Assert.Equal(1L, lazyMap["new"].AsValue<long>());
     }
 }

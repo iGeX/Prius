@@ -12,13 +12,11 @@ public sealed class EmptyMap : IMap
     private EmptyMap() { }
     
     public IEnumerable<string> Keys(bool? ascending = null) => [];
-    
-    public IEnumerable<MapValue> Values => [];
 
-    public MapValue Get(string key) => Empty.Instance;
-
-    public void Put(string key, MapValue value)
+    public MapValue this[string key]
     {
+        get => Empty.Instance;
+        set { }
     }
 
     public bool Equals(IMap? other) => other is { IsEmpty: true };

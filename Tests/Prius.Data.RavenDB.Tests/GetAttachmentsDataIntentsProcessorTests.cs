@@ -44,9 +44,9 @@ public class GetAttachmentsDataIntentsProcessorTests : AbstractDataIntentsProces
             const string ExpectedBinaryPathStr = $"Attachments/{DocId}/{AttachmentName}";
             Assert.True(successMap.ContainsKey(ExpectedBinaryPathStr), "Success map must contain the generated attachment path as a key");
 
-            var returnedMetadata = successMap.Get(ExpectedBinaryPathStr).AsMap();
-            Assert.Equal("application/pdf", returnedMetadata.Get("ContentType").AsString());
-            Assert.True(returnedMetadata.Get("Size").AsLong() > 0);
+            var returnedMetadata = successMap[ExpectedBinaryPathStr].AsMap();
+            Assert.Equal("application/pdf", returnedMetadata["ContentType"].AsString());
+            Assert.True(returnedMetadata["Size"].AsLong() > 0);
         
             var binaryPath = new MapPath(ExpectedBinaryPathStr);
             var accessor = binaryManager.Get(binaryPath);

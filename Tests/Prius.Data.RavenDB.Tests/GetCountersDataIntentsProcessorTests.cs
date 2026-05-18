@@ -31,8 +31,8 @@ public class GetCountersDataIntentsProcessorTests : AbstractDataIntentsProcessor
         {
             Assert.True(context.PutCalls.ContainsKey("output/counters"));
             var counters = context.PutCalls["output/counters"].AsMap();
-            Assert.Equal(5L, counters.Get("Visits").AsLong());
-            Assert.Equal(10L, counters.Get("Likes").AsLong());
+            Assert.Equal(5L, counters["Visits"].AsLong());
+            Assert.Equal(10L, counters["Likes"].AsLong());
             return Task.CompletedTask;
         });
     }

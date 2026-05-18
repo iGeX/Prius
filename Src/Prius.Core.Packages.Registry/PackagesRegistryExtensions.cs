@@ -44,7 +44,7 @@ public static class PackagesRegistryExtensions
                 return Results.File(cachedBytes!, "application/octet-stream", $"{id}.{version}.nupkg");
 
             var manifests = await repo.GetManifests("any", DictionaryMap.From((id, version)), ct);
-            var manifest = manifests.Get(id).AsMap();
+            var manifest = manifests[id].AsMap();
             
             if (manifest.IsEmpty)
                 return Results.NotFound();
@@ -66,7 +66,7 @@ public static class PackagesRegistryExtensions
 
             var baseUrl = $"{context.Request.Scheme}://{context.Request.Host}/{routePrefix}";
             var versionsMap = await repo.GetVersions("any", DictionaryMap.From((id, true)), ct);
-            var versions = versionsMap.Get(id).AsMap();
+            var versions = versionsMap[id].AsMap();
             
             if (versions.IsEmpty)
                 return Results.NotFound();
@@ -75,13 +75,13 @@ public static class PackagesRegistryExtensions
             foreach (var v in versions.Keys())
             {
                 var manifests = await repo.GetManifests("any", DictionaryMap.From((id, v)), ct);
-                var manifest = manifests.Get(id).AsMap();
+                var manifest = manifests[id].AsMap();
                 
-                var dependencyGroups = manifest.Get("Dependencies").AsMap().Keys().Select(tfm => 
+                var dependencyGroups = manifest["Dependencies"].AsMap().Keys().Select(tfm => 
                 {
                     var tfmDeps = manifest.DeepGet("Dependencies/" + tfm).AsMap();
                     return new DependencyGroupDto(tfm, tfmDeps.Keys().Select(depId => 
-                        new DependencyDto(depId, tfmDeps.Get(depId).AsMap().Get("version").AsValue<string>())
+                        new DependencyDto(depId, tfmDeps[depId].AsMap()["version"].AsValue<string>())
                     ).ToList());
                 }).ToList();
 
@@ -123,7 +123,7 @@ public static class PackagesRegistryExtensions
             foreach (var id in paged)
             {
                 var versionsMap = await repo.GetVersions("any", DictionaryMap.From((id, true)), ct);
-                var sortedVersions = versionsMap.Get(id).AsMap().Keys()
+                var sortedVersions = versionsMap[id].AsMap().Keys()
                     .Select(NuGetVersion.Parse)
                     .OrderBy(v => v)
                     .ToList();
@@ -131,7 +131,7 @@ public static class PackagesRegistryExtensions
                 var latestVersion = sortedVersions.LastOrDefault()?.ToNormalizedString() ?? "0.0.0";
                 
                 var manifests = await repo.GetManifests("any", DictionaryMap.From((id, latestVersion)), ct);
-                var manifest = manifests.Get(id).AsMap();
+                var manifest = manifests[id].AsMap();
 
                 searchResults.Add(new SearchResultDto(
                     RegistrationId: $"{baseUrl}/metadata/{id.ToLowerInvariant()}/index.json",

@@ -17,14 +17,19 @@ public sealed class DictionaryMap(IDictionary dictionary) : IMap
     
     private IEnumerable<string> StringKeys => 
         _dictionary.Keys.Cast<object?>().Select(o => o?.ToString() ?? string.Empty);
+    
+    public IEnumerable<string> Keys(bool? ascending = null)
+    {
+        var enm = StringKeys;
+        if (ascending.HasValue)
+            enm = ascending.Value ? enm.OrderBy(k => k) : enm.OrderByDescending(k => k);
+        return enm;
+    }
 
-    public IEnumerable<MapValue> Values => 
-        _dictionary.Values.Cast<object?>().Select(v => v.AsMapValue());
-
-    public MapValue Get(string key) => _dictionary[key].AsMapValue();
-
-    public void Put(string key, MapValue value) =>
-        value.Switch(
+    public MapValue this[string key]
+    {
+        get => _dictionary[key].AsMapValue();
+        set => value.Switch(
             onEmpty: _ => _dictionary.Remove(key),
             onMap: map => _dictionary[key] = map.DeepCopy(),
             onString: val => _dictionary[key] = val,
@@ -33,13 +38,6 @@ public sealed class DictionaryMap(IDictionary dictionary) : IMap
             onDecimal: val => _dictionary[key] = val,
             onDateTimeOffset: val => _dictionary[key] = val
         );
-
-    public IEnumerable<string> Keys(bool? ascending = null)
-    {
-        var enm = StringKeys;
-        if (ascending.HasValue)
-            enm = ascending.Value ? enm.OrderBy(k => k) : enm.OrderByDescending(k => k);
-        return enm;
     }
 
     public bool Equals(IMap? other) => this.DeepEquals(other);
@@ -58,7 +56,7 @@ public sealed class DictionaryMap(IDictionary dictionary) : IMap
     {
         var map = New;
         foreach (var (key, value) in items)
-            map.Put(key, value);
+            map[key] = value;
         return map;
     }
 }

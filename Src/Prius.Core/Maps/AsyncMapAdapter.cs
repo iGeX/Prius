@@ -22,25 +22,14 @@ internal sealed class AsyncMapAdapter(IMap map) : IAsyncMap
         await Task.CompletedTask;
     }
     
-    public IAsyncEnumerable<MapValue> Values  => _asyncMap?.Values ?? GetValues(_map);
-    
-    private async IAsyncEnumerable<MapValue> GetValues(IMap map)
-    {
-        foreach (var value in map.Values)
-        {
-            yield return value;
-        }
-        await Task.CompletedTask;
-    }
-    
-    public ValueTask<MapValue> Get(string key) => _asyncMap?.Get(key) ?? new ValueTask<MapValue>(_map.Get(key));
+    public ValueTask<MapValue> Get(string key) => _asyncMap?.Get(key) ?? new ValueTask<MapValue>(_map[key]);
 
     public ValueTask<bool> Put(string key, MapValue value)
     {
         if(_asyncMap is not null)
             return _asyncMap.Put(key, value);
         
-        _map.Put(key, value);
+        _map[key] = value;
         return new ValueTask<bool>(true);
     }
     
