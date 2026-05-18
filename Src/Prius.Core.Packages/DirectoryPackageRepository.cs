@@ -142,8 +142,8 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
             await using var stream = File.OpenRead(path);
             var map = PackageImporter.Import(stream);
         
-            var pkg = map.DeepGet("Info/id").AsString();
-            var ver = map.DeepGet("Info/version").AsString();
+            var pkg = map.Get("Info/id").AsString();
+            var ver = map.Get("Info/version").AsString();
         
             var tracked = new List<(string Tfm, string Pkg, string Ver)>();
             var foundTfms = new HashSet<string>(StringComparer.OrdinalIgnoreCase);

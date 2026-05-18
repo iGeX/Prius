@@ -10,7 +10,7 @@ public static class MapValueTaskExtensions
 
     public static async ValueTask PutAll(this ValueTask<IMap> map, IEnumerable<string> keys, IMap subMap) => (await map).PutAll(keys, subMap);
 
-    public static async ValueTask<bool> IsValue(this ValueTask<MapValue> mapValue) => (await mapValue).IsValue();
+    public static async ValueTask<bool> IsValue(this ValueTask<MapValue> mapValue) => (await mapValue).IsValue;
     
     public static async ValueTask PutEmpty(this ValueTask<IMap> map, string key) => (await map)[key] = Empty.Instance;
 

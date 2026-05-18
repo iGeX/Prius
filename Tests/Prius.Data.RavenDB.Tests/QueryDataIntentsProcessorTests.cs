@@ -453,9 +453,9 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         await ExecuteTest(store, provider, () =>
         {
             // Assert
-            if (context.PutCalls.ContainsKey("failures/1"))
+            if (context.PutCalls.TryGetValue("failures/1", out var value))
             {
-                var failureReason = context.PutCalls["failures/1"].Serialize();
+                var failureReason = value.Serialize();
                 Assert.Fail("Query failed with exception: " + failureReason);
             }
 
@@ -518,9 +518,9 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         // Act
         await ExecuteTest(store, provider, () =>
         {
-            if (context.PutCalls.ContainsKey("failures/1"))
+            if (context.PutCalls.TryGetValue("failures/1", out var value))
             {
-                var failureReason = context.PutCalls["failures/1"].Serialize();
+                var failureReason = value.Serialize();
                 Assert.Fail("Map-Reduce query failed: " + failureReason);
             }
 

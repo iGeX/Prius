@@ -41,7 +41,7 @@ public static class PackageImporter
             using (var entryStream = entry.Open())
                 fileInfo["hash"] = ComputeHash(entryStream);
 
-            packageMap.DeepPut(assetPath, fileInfo);
+            packageMap.Put(assetPath, fileInfo);
         }
 
         return packageMap;

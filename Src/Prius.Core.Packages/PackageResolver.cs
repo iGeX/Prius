@@ -38,7 +38,8 @@ public sealed class PackageResolver(IPackageRepository repository)
             foreach (var id in queue.Keys())
             {
                 var manifestValue = currentManifests[id] ;
-                if (manifestValue.IsEmpty) continue;
+                if (manifestValue.IsEmpty) 
+                    continue;
 
                 var manifest = manifestValue.AsMap();
                 var version = queue[id].AsString();
@@ -46,8 +47,9 @@ public sealed class PackageResolver(IPackageRepository repository)
                 var existing = resolvedManifests[id].AsMap();
                 if (!existing.IsEmpty)
                 {
-                    var existingVer = existing.DeepGet("Info/version").AsString();
-                    if (string.CompareOrdinal(existingVer, version) >= 0) continue;
+                    var existingVer = existing.Get("Info/version").AsString();
+                    if (string.CompareOrdinal(existingVer, version) >= 0) 
+                        continue;
                 }
 
                 resolvedManifests[id] = new MapValue(manifest);
@@ -67,7 +69,7 @@ public sealed class PackageResolver(IPackageRepository repository)
 
         return DictionaryMap.New
             .With("Order", order)
-            .With("Manifests", resolvedManifests);
+            .With("Manifests", resolvedManifests).AsReadOnly();
     }
 
     private static void Sort(string id, string tfm, IMap manifests, IMap order, IMap visited)
@@ -96,6 +98,7 @@ public sealed class PackageResolver(IPackageRepository repository)
             if (!branch.IsEmpty) 
                 return branch;
         }
-        return EmptyMap.Instance;
+        
+        return DictionaryMap.New;
     }
 }

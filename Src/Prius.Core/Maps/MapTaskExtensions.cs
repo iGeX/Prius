@@ -10,7 +10,7 @@ public static class MapTaskExtensions
 
     public static async Task PutAll(this Task<IMap> map, IEnumerable<string> keys, IMap subMap) => (await map).PutAll(keys, subMap);
 
-    public static async Task<bool> IsValue(this Task<MapValue> mapValue) => (await mapValue).IsValue();
+    public static async Task<bool> IsValue(this Task<MapValue> mapValue) => (await mapValue).IsValue;
     
     public static async Task PutEmpty(this Task<IMap> map, string key) => (await map)[key] = Empty.Instance;
 

@@ -79,7 +79,7 @@ public static class PackagesRegistryExtensions
                 
                 var dependencyGroups = manifest["Dependencies"].AsMap().Keys().Select(tfm => 
                 {
-                    var tfmDeps = manifest.DeepGet("Dependencies/" + tfm).AsMap();
+                    var tfmDeps = manifest.Get("Dependencies/" + tfm).AsMap();
                     return new DependencyGroupDto(tfm, tfmDeps.Keys().Select(depId => 
                         new DependencyDto(depId, tfmDeps[depId].AsMap()["version"].AsValue<string>())
                     ).ToList());
@@ -91,8 +91,8 @@ public static class PackagesRegistryExtensions
                     new CatalogEntryDto(
                         $"{baseUrl}/metadata/{id}/{v}.json", 
                         id, v, 
-                        manifest.DeepGet("Info/authors").AsValue<string>(), 
-                        manifest.DeepGet("Info/description").AsValue<string>(), 
+                        manifest.Get("Info/authors").AsValue<string>(), 
+                        manifest.Get("Info/description").AsValue<string>(), 
                         dependencyGroups)
                 ));
             }
@@ -138,9 +138,9 @@ public static class PackagesRegistryExtensions
                     Type: "Package",
                     Id: id,
                     Version: latestVersion,
-                    Description: manifest.DeepGet("Info/description").AsValue<string>(),
-                    Authors: manifest.DeepGet("Info/authors").AsValue<string>(),
-                    ProjectUrl: manifest.DeepGet("Info/projectUrl").AsValue<string>(),
+                    Description: manifest.Get("Info/description").AsValue<string>(),
+                    Authors: manifest.Get("Info/authors").AsValue<string>(),
+                    ProjectUrl: manifest.Get("Info/projectUrl").AsValue<string>(),
                     RegistrationUrl: $"{baseUrl}/metadata/{id.ToLowerInvariant()}/index.json",
                     Versions: sortedVersions.Select(v => new SearchResultVersionDto(
                         $"{baseUrl}/metadata/{id.ToLowerInvariant()}/{v.ToNormalizedString()}.json",

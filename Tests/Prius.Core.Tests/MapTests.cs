@@ -11,8 +11,8 @@ public class MapTests
         var map = DictionaryMap.New;
         var path = (MapPath)"orders/active/1";
         
-        map.DeepPut(path, 42L);
-        var result = map.DeepGet(path);
+        map.Put(path, 42L);
+        var result = map.Get(path);
 
         Assert.True(result.IsLong);
         Assert.Equal(42L, (long)result);
@@ -33,7 +33,7 @@ public class MapTests
         dictMap["data"] = new MapValue(sub);
         
         Assert.True(jsonMap.DeepEquals(dictMap));
-        Assert.Equal("active", jsonMap.DeepGet("data/status").AsValue<string>());
+        Assert.Equal("active", jsonMap.Get("data/status").AsValue<string>());
     }
 
     [Fact]
@@ -52,13 +52,13 @@ public class MapTests
     public void DeepCopy_Should_CreateIsolatedIterativeClone()
     {
         var root = DictionaryMap.New;
-        root.DeepPut("a/b/c", "origin");
+        root.Put("a/b/c", "origin");
 
         var copy = new DictionaryMap(root.DeepCopy());
-        copy.DeepPut("a/b/c", "mutated");
+        copy.Put("a/b/c", "mutated");
         
-        Assert.Equal("origin", root.DeepGet("a/b/c").AsValue<string>());
-        Assert.Equal("mutated", copy.DeepGet("a/b/c").AsValue<string>());
+        Assert.Equal("origin", root.Get("a/b/c").AsValue<string>());
+        Assert.Equal("mutated", copy.Get("a/b/c").AsValue<string>());
     }
 
     [Fact]
@@ -79,11 +79,11 @@ public class MapTests
     {
         var map = DictionaryMap.New;
         
-        map.DeepPut("path", 1L);
-        map.DeepPut("path/sub", 2L);
+        map.Put("path", 1L);
+        map.Put("path/sub", 2L);
 
         Assert.True(map["path"].IsMap);
-        Assert.Equal(2L, map.DeepGet("path/sub").AsValue<long>());
+        Assert.Equal(2L, map.Get("path/sub").AsValue<long>());
     }
 
     [Fact]

@@ -9,6 +9,8 @@ public sealed class StackedMap(IEnumerable<IMap> maps) : IMap
 
     public bool IsEmpty => !Keys().Any();
     
+    public bool CanWrite => true;
+    
     public IEnumerable<string> Keys(bool? ascending = null)
     {
         var enm = Maps.SelectMany(m => m.Keys()).Distinct();
@@ -17,11 +19,14 @@ public sealed class StackedMap(IEnumerable<IMap> maps) : IMap
         return enm;
     }
 
+    public bool ContainsKey(string key) => Maps.Any(m => m.ContainsKey(key));
+
     public MapValue this[string key]
     {
         get
         {
-            if (string.IsNullOrEmpty(key)) return Empty.Instance;
+            if (string.IsNullOrEmpty(key)) 
+                return Empty.Instance;
         
             foreach (var map in Maps.Reverse())
             {

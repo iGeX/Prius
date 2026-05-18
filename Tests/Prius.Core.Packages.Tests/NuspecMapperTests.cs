@@ -31,16 +31,16 @@ public sealed class NuspecMapperTests
 
         var map = NuspecMapper.ToMap(Xml);
 
-        Assert.Equal("Prius.Core", map.DeepGet("Info/id").AsValue<string>());
-        Assert.Equal("1.0.0-beta", map.DeepGet("Info/version").AsValue<string>());
-        Assert.Equal("git", map.DeepGet("Info/repository/type").AsValue<string>());
-        Assert.Equal("abcdef", map.DeepGet("Info/repository/commit").AsValue<string>());
+        Assert.Equal("Prius.Core", map.Get("Info/id").AsValue<string>());
+        Assert.Equal("1.0.0-beta", map.Get("Info/version").AsValue<string>());
+        Assert.Equal("git", map.Get("Info/repository/type").AsValue<string>());
+        Assert.Equal("abcdef", map.Get("Info/repository/commit").AsValue<string>());
         
-        Assert.Equal("8.0.0", map.DeepGet("Dependencies/net8.0/System.Text.Json/version").AsValue<string>());
-        Assert.Equal("Build,Analyzers", map.DeepGet("Dependencies/net8.0/System.Text.Json/exclude").AsValue<string>());
+        Assert.Equal("8.0.0", map.Get("Dependencies/net8.0/System.Text.Json/version").AsValue<string>());
+        Assert.Equal("Build,Analyzers", map.Get("Dependencies/net8.0/System.Text.Json/exclude").AsValue<string>());
         
-        Assert.Equal("13.0.3", map.DeepGet("Dependencies/netstandard2.1/Newtonsoft.Json/version").AsValue<string>());
-        Assert.Equal("All", map.DeepGet("Dependencies/netstandard2.1/Newtonsoft.Json/privateAssets").AsValue<string>());
+        Assert.Equal("13.0.3", map.Get("Dependencies/netstandard2.1/Newtonsoft.Json/version").AsValue<string>());
+        Assert.Equal("All", map.Get("Dependencies/netstandard2.1/Newtonsoft.Json/privateAssets").AsValue<string>());
     }
 
     [Fact]
@@ -61,6 +61,6 @@ public sealed class NuspecMapperTests
 
         var map = NuspecMapper.ToMap(Xml);
 
-        Assert.Equal("2.0.0", map.DeepGet("Dependencies/any/Lib.A/version").AsValue<string>());
+        Assert.Equal("2.0.0", map.Get("Dependencies/any/Lib.A/version").AsValue<string>());
     }
 }

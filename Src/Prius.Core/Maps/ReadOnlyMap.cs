@@ -10,7 +10,11 @@ internal sealed class ReadOnlyMap(IMap source) : IMap
     
     public bool IsEmpty => _source.IsEmpty;
 
+    public bool CanWrite => false;
+    
     public IEnumerable<string> Keys(bool? ascending = null) => _source.Keys(ascending);
+
+    public bool ContainsKey(string key) => _source.ContainsKey(key);
 
     public MapValue this[string key]
     {

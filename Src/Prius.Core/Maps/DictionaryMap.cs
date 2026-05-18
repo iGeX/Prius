@@ -14,7 +14,9 @@ public sealed class DictionaryMap(IDictionary dictionary) : IMap
     public static DictionaryMap New => new(new Dictionary<string, object?>());
     
     public bool IsEmpty => _dictionary.Count is 0;
-    
+
+    public bool CanWrite => true;
+
     private IEnumerable<string> StringKeys => 
         _dictionary.Keys.Cast<object?>().Select(o => o?.ToString() ?? string.Empty);
     
@@ -25,6 +27,8 @@ public sealed class DictionaryMap(IDictionary dictionary) : IMap
             enm = ascending.Value ? enm.OrderBy(k => k) : enm.OrderByDescending(k => k);
         return enm;
     }
+
+    public bool ContainsKey(string key) => _dictionary.Contains(key);
 
     public MapValue this[string key]
     {
@@ -52,6 +56,7 @@ public sealed class DictionaryMap(IDictionary dictionary) : IMap
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static DictionaryMap From(params (string Key, MapValue Value)[] items) => From((IEnumerable<(string Key, MapValue Value)>) items);
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static DictionaryMap From(IEnumerable<(string Key, MapValue Value)> items)
     {
         var map = New;

@@ -1,5 +1,4 @@
 ﻿using System.Collections;
-using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
 using System.Text.Json;
@@ -32,152 +31,6 @@ public static class MapExtensions
         }
     }
     
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static T OtherTo<T>() => typeof(T) == typeof(string) ? (T)(object)string.Empty : default!;
-    
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static T LongTo<T>(long l) => typeof(T) switch
-    {
-        var t when t == typeof(long) => (T)(object)l,
-        var t when t == typeof(decimal) => (T)(object)(decimal)l,
-        var t when t == typeof(bool) => (T)(object)(l != 0),
-        var t when t == typeof(string) => (T)(object)l.ToString(CultureInfo.InvariantCulture),
-        var t when t == typeof(DateTimeOffset) => (T)(object)DateTimeOffset.FromUnixTimeMilliseconds(l),
-        _ => default!
-    };
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static T DecimalTo<T>(decimal d) => typeof(T) switch
-    {
-        var t when t == typeof(decimal) => (T)(object)d,
-        var t when t == typeof(long) => (T)(object)(long)Math.Round(d),
-        var t when t == typeof(bool) => (T)(object)(d != 0),
-        var t when t == typeof(string) => (T)(object)d.ToString(CultureInfo.InvariantCulture),
-        _ => default!
-    };
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static T BoolTo<T>(bool b) => typeof(T) switch
-    {
-        var t when t == typeof(bool) => (T)(object)b,
-        var t when t == typeof(long) => (T)(object)(b ? 1L : 0L),
-        var t when t == typeof(decimal) => (T)(object)(b ? 1m : 0m),
-        var t when t == typeof(string) => (T)(object)(b ? "true" : "false"),
-        _ => default!
-    };
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static T DateTimeTo<T>(DateTimeOffset dt) => typeof(T) switch
-    {
-        var t when t == typeof(DateTimeOffset) => (T)(object)dt,
-        var t when t == typeof(long) => (T)(object)dt.ToUnixTimeMilliseconds(),
-        var t when t == typeof(string) => (T)(object)dt.ToString("O"),
-        _ => default!
-    };
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private static T StringTo<T>(string? s)
-    {
-        if (string.IsNullOrEmpty(s))
-            return (T)(object)string.Empty;
-        if (typeof(T) == typeof(string)) 
-            return (T)(object)s;
-        
-        var span = s.AsSpan().Trim();
-
-        if (typeof(T) == typeof(long)) 
-            return (T)(object)(long.TryParse(span, NumberStyles.Any, CultureInfo.InvariantCulture, out var l) ? l : 0L);
-
-        if (typeof(T) == typeof(decimal))
-        {
-            if (span.Length < 128)
-            {
-                Span<char> buffer = stackalloc char[span.Length];
-                span.CopyTo(buffer);
-                
-                for (var i = 0; i < buffer.Length; i++)
-                    if (buffer[i] == ',') buffer[i] = '.';
-
-                return (T)(object)(decimal.TryParse(buffer, NumberStyles.Any, CultureInfo.InvariantCulture, out var d) ? d : 0m);
-            }
-            
-            var normalized = s.Replace(',', '.');
-            return (T)(object)(decimal.TryParse(normalized, NumberStyles.Any, CultureInfo.InvariantCulture, out var d2) ? d2 : 0m);
-        }
-
-        if (typeof(T) == typeof(bool))
-        {
-            if (bool.TryParse(s, out var b)) 
-                return (T)(object)b;
-            if (span.Equals("1".AsSpan(), StringComparison.Ordinal) || span.Equals("true".AsSpan(), StringComparison.OrdinalIgnoreCase)) 
-                return (T)(object)true;
-            return (T)(object)false;
-        }
-
-        if (typeof(T) == typeof(DateTimeOffset))
-        {
-            return (T)(object)(DateTimeOffset.TryParse(span, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var dt) 
-                ? dt 
-                : DateTimeOffset.MinValue);
-        }
-
-        return default!;
-    }
-    
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool IsValue(this MapValue mapValue) => 
-        mapValue.IsString || mapValue.IsLong || mapValue.IsBoolean || mapValue.IsDecimal ||  mapValue.IsDateTimeOffset;
-    
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static object? AsValue(this MapValue mapValue) => mapValue.Match(
-            object? (_) => null, 
-            object? (_) => null,
-            s => s,
-            l => l,
-            b => b,
-            d => d,
-            dt => dt);
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static T AsValue<T>(this MapValue val) =>
-        val.Match(
-            onEmpty: _ => OtherTo<T>(),
-            onMap: _ => OtherTo<T>(),
-            onString: StringTo<T>, 
-            onLong: LongTo<T>,
-            onBool: BoolTo<T>,
-            onDecimal: DecimalTo<T>,
-            onDateTimeOffset: DateTimeTo<T>
-        );
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static string AsString(this MapValue val) => val.AsValue<string>();
-    
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static long AsLong(this MapValue val) => val.AsValue<long>();
-    
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static int AsInt(this MapValue val) => (int) val.AsValue<long>();
-    
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool AsBool(this MapValue val) => val.AsValue<bool>();
-    
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static decimal AsDecimal(this MapValue val) => val.AsValue<decimal>();
-    
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static DateTimeOffset AsDateTimeOffset(this MapValue val) => val.AsValue<DateTimeOffset>();
-    
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static IMap AsMap(this MapValue mapValue) => mapValue.Match(
-        _ => EmptyMap.Instance, 
-        m => m,
-        _ => EmptyMap.Instance,
-        _ => EmptyMap.Instance,
-        _ => EmptyMap.Instance,
-        _ => EmptyMap.Instance,
-        _ => EmptyMap.Instance);
-  
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static TResult Match<TResult>(
         this MapValue mapValue,
@@ -218,7 +71,7 @@ public static class MapExtensions
     public static IMap GetAll(this IMap? map, IEnumerable<string> keys)
     {
         if (map == null) 
-            return EmptyMap.Instance;
+            return DictionaryMap.New;
         
         var dict = new Dictionary<string, object>();
         foreach (var key in keys)
@@ -384,7 +237,7 @@ public static class MapExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void WriteMapValue(this Utf8JsonWriter writer, MapValue mapValue) => mapValue.Switch(
+    private static void WriteMapValue(this Utf8JsonWriter writer, MapValue mapValue) => mapValue.Switch(
         _ => writer.WriteNullValue(),
         map => DoSerialize(map, writer),
         writer.WriteStringValue,
@@ -491,11 +344,8 @@ public static class MapExtensions
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static IMap AsReadOnly(this IMap map) => new ReadOnlyMap(map);
-    
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static bool ContainsKey(this IMap map, string key) => map.Keys().Any(k => string.Equals(k, key, StringComparison.Ordinal));
 
-    public static MapValue DeepGet(this IMap map, MapPath path)
+    public static MapValue Get(this IMap map, MapPath path)
     {
         while (true)
         {
@@ -515,9 +365,9 @@ public static class MapExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void DeepPut(this IMap map, MapPath path, IMap value) => map.DeepPut(path,  new MapValue(value));
+    public static void Put(this IMap map, MapPath path, IMap value) => map.Put(path,  new MapValue(value));
 
-    public static void DeepPut(this IMap map, MapPath path, MapValue value)
+    public static void Put(this IMap map, MapPath path, MapValue value)
     {
         while (true)
         {
@@ -533,7 +383,7 @@ public static class MapExtensions
             var nextValue = map[path.Head];
             if (!nextValue.IsMap)
             {
-                map[path.Head] = new MapValue(EmptyMap.Instance);
+                map[path.Head] = new MapValue(DictionaryMap.New);
                 map = map[path.Head].AsMap();
                 path = path.Tail;
                 continue;
@@ -541,6 +391,26 @@ public static class MapExtensions
 
             map = nextValue.AsMap();
             path = path.Tail;
+        }
+    }
+    
+    public static int GetSpanHashCode(this ReadOnlySpan<char> span)
+    {
+        unchecked
+        {
+            var hash1 = (5381 << 16) + 5381;
+            var hash2 = hash1;
+
+            for (var i = 0; i < span.Length; i += 2)
+            {
+                hash1 = ((hash1 << 5) + hash1) ^ span[i];
+                if (i + 1 < span.Length)
+                {
+                    hash2 = ((hash2 << 5) + hash2) ^ span[i + 1];
+                }
+            }
+
+            return hash1 + (hash2 * 1566083941);
         }
     }
 }

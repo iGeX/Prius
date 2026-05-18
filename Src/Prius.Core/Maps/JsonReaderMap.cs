@@ -25,13 +25,36 @@ public sealed class JsonReaderMap(ReadOnlyMemory<byte> data) : IMap
         }
     }
     
+    public bool CanWrite => true;
+    
     public IEnumerable<string> Keys(bool? ascending = null) => Materialize().Keys(ascending);
+
+    public bool ContainsKey(string key)
+    {
+        if (_materialized != null) 
+            return _materialized.ContainsKey(key);
+
+        var reader = new Utf8JsonReader(data.Span);
+        if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)
+            return new MapValue();
+
+        while (reader.Read() && reader.TokenType != JsonTokenType.EndObject)
+        {
+            if (reader.TokenType == JsonTokenType.PropertyName && reader.ValueTextEquals(key))
+                return true;
+            
+            reader.Skip();
+        }
+
+        return false;
+    }
 
     public MapValue this[string key]
     {
         get
         {
-            if (_materialized != null) return _materialized[key];
+            if (_materialized != null) 
+                return _materialized[key];
 
             var reader = new Utf8JsonReader(data.Span);
             if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject)

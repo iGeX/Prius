@@ -28,6 +28,8 @@ public sealed class PocoModelMap : IMap
 
     public bool IsEmpty => _props.Length == 0;
 
+    public bool CanWrite => true;
+    
     public IEnumerable<string> Keys(bool? ascending = null)
     {
         var keys = _props.Select(p => p.Name);
@@ -35,6 +37,8 @@ public sealed class PocoModelMap : IMap
             keys = ascending.Value ? keys.OrderBy(k => k) : keys.OrderByDescending(k => k);
         return keys;
     }
+
+    public bool ContainsKey(string key) => _props.Any(p => string.Equals(p.Name, key, StringComparison.Ordinal));
 
     public MapValue this[string key]
     {

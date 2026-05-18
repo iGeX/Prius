@@ -14,6 +14,8 @@ public sealed class ListMap(IList list) : IMap
 
     public bool IsEmpty => _list.Count is 0;
     
+    public bool CanWrite => true;
+    
     public IEnumerable<string> Keys(bool? ascending = null)
     {
         var result = Enumerable.Range(0, _list.Count);
@@ -22,6 +24,8 @@ public sealed class ListMap(IList list) : IMap
 
         return result.Select(i => i.ToString());
     }
+
+    public bool ContainsKey(string key) => int.TryParse(key, out var index) && index >= 0 && index < _list.Count;
 
     public MapValue this[string key]
     {

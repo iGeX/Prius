@@ -13,7 +13,7 @@ public sealed class Bootstrap
 
     private readonly IBootstrapRuntime _runtime;
 
-    public IMap StartupTargets { get; init; } = EmptyMap.Instance;
+    public IMap StartupTargets { get; init; } = DictionaryMap.New;
 
     public Bootstrap(IPackageRepository repository) : this(repository, new NativeBootstrapRuntime()) { }
     
@@ -52,7 +52,7 @@ public sealed class Bootstrap
                 var manifest = manifests[pkgId].AsMap();
                 var assets = manifest["Assets"].AsMap();
 
-                Console.WriteLine($"[LOAD] {pkgId} ({manifest.DeepGet("Info/version").AsString()})");
+                Console.WriteLine($"[LOAD] {pkgId} ({manifest.Get("Info/version").AsString()})");
                 
                 await LoadLibs(assets);
                 
@@ -95,7 +95,7 @@ public sealed class Bootstrap
         var libs = assets["lib"].AsMap();
         var libMap = FrameworkConstants.GetCompatible(_runtime.Tfm)
             .Select(tfm => libs[tfm].AsMap())
-            .FirstOrDefault(m => !m.IsEmpty) ?? EmptyMap.Instance;
+            .FirstOrDefault(m => !m.IsEmpty) ?? DictionaryMap.New;
 
         await LoadAssembliesRecursive(libMap);
     }

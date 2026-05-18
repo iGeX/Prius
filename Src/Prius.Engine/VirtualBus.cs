@@ -58,7 +58,7 @@ public sealed class VirtualBus : IReactorContext
     
     public string Key => string.Empty;
 
-    public IMap Env => EmptyMap.Instance;
+    public IMap Env => DictionaryMap.New;
 
     public void Put(MapPath path, MapValue value, IMap? envPatch = null) => DispatchPut(_rootContext, path, value, envPatch);
 
