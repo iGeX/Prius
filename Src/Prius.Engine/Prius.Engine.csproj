@@ -1,6 +1,12 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-    <ItemGroup>
-      <ProjectReference Include="..\Prius.Core.Packages\Prius.Core.Packages.csproj" />
-      <ProjectReference Include="..\Prius.Engine.Abstractions\Prius.Engine.Abstractions.csproj" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Prius.Core.Packages\Prius.Core.Packages.csproj" />
+    <ProjectReference Include="..\Prius.Engine.Abstractions\Prius.Engine.Abstractions.csproj" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleTo">
+      <_Parameter1>Prius.Engine.Tests</_Parameter1>
+    </AssemblyAttribute>
+  </ItemGroup>
 </Project>

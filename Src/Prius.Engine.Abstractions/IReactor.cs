@@ -8,5 +8,5 @@ public interface IReactor
     
     MapValue Get(IReactorContext context, MapPath path);
     
-    void Notify(IReactorContext context, IMap changedKeys);
+    void Notify(IReactorContext context, MapPath path, MapValue value);
 }
