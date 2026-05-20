@@ -11,6 +11,7 @@
     <PackageReference Include="NuGet.Protocol" Version="7.3.1" />
   </ItemGroup>
   <ItemGroup>
+    <ProjectReference Include="..\..\Src\Prius.Engine\Prius.Engine.csproj" />
     <ProjectReference Include="..\..\Src\Prius.Packages.Directory.Server\Prius.Packages.Directory.Server.csproj" />
   </ItemGroup>
 </Project>

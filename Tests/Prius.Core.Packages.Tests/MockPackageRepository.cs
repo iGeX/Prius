@@ -1,11 +1,13 @@
 ﻿using Prius.Core.Maps;
+using Prius.Engine;
+using Prius.Engine.Abstractions;
 
 namespace Prius.Core.Packages.Tests;
 
 public sealed class MockPackageRepository : IPackageRepository
 {
     private readonly Dictionary<string, IMap> _manifests = new();
-    private readonly Dictionary<string, byte[]> _blobs = new();
+    private readonly IBinaryManager _binaryManager = new BinaryManager();
 
     public void AddPackage(IMap manifest, Dictionary<string, byte[]>? blobs = null)
     {
@@ -16,8 +18,11 @@ public sealed class MockPackageRepository : IPackageRepository
         if (blobs == null)
             return;
         
-        foreach (var b in blobs) 
-            _blobs[b.Key] = b.Value;
+        foreach (var b in blobs)
+        {
+            var path = new MapPath($"Packages/{b.Key}");
+            _binaryManager.Store(path, Empty.Instance, new MemoryStream(b.Value));
+        }
     }
 
     public ValueTask<IMap> GetPackages(CancellationToken ct) => throw new NotSupportedException();
@@ -48,7 +53,7 @@ public sealed class MockPackageRepository : IPackageRepository
     }
 
     public ValueTask<Stream> OpenStream(string hash, CancellationToken ct) => 
-        new(new MemoryStream(_blobs[hash]));
+        new(_binaryManager.Get(new MapPath($"Packages/{hash}")).OpenStream());
 
 #pragma warning disable CS0067
     public event Func<ValueTask>? OnStasisRequested;

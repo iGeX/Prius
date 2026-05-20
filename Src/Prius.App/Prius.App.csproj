@@ -5,5 +5,6 @@
   
   <ItemGroup>
     <ProjectReference Include="..\Prius.Core.Packages\Prius.Core.Packages.csproj" />
+    <ProjectReference Include="..\Prius.Engine\Prius.Engine.csproj" />
   </ItemGroup>
 </Project>

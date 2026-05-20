@@ -10,6 +10,7 @@ using NuGet.Protocol.Core.Types;
 using Prius.Core.Maps;
 using Prius.Core.Packages;
 using Prius.Core.Packages.Registry;
+using Prius.Engine;
 using Xunit;
 
 namespace Prius.Core.Packages.Registry.Tests;
@@ -33,8 +34,7 @@ public sealed class RegistryIntegrationTests : IDisposable
             {
                 // Заменяем реальный репозиторий на Directory с временной папкой и NullLogger
                 services.AddSingleton<IPackageRepository>(new DirectoryPackageRepository(
-                    _tempPath, 
-                    NullLogger<DirectoryPackageRepository>.Instance));
+                    _tempPath, new BinaryManager()));
                 
                 services.AddPackagesRegistry();
             });

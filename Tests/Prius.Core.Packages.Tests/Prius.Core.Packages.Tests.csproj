@@ -1,6 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
     <ItemGroup>
         <PackageReference Include="Microsoft.NET.Test.Sdk" Version="18.4.0" />
+        <PackageReference Include="xunit.runner.visualstudio" Version="3.0.2">
+          <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+          <PrivateAssets>all</PrivateAssets>
+        </PackageReference>
         <PackageReference Include="xunit.v3" Version="3.2.2" />
         <PackageReference Include="xunit.v3.runner.msbuild" Version="3.2.2">
           <PrivateAssets>all</PrivateAssets>
@@ -9,6 +13,7 @@
     </ItemGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\..\Src\Prius.Core.Packages\Prius.Core.Packages.csproj"/>
+        <ProjectReference Include="..\..\Src\Prius.Core.Packages\Prius.Core.Packages.csproj" />
+        <ProjectReference Include="..\..\Src\Prius.Engine\Prius.Engine.csproj" />
     </ItemGroup>
 </Project>

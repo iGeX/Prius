@@ -1,5 +1,6 @@
-﻿using Prius.Core.Maps;
+using Prius.Core.Maps;
 using Prius.Core.Packages;
+using Prius.Engine;
 
 if (args.Length == 0)
 {
@@ -17,7 +18,7 @@ foreach (var arg in args)
     targets[path.Head] = path.Tail.ToString();
 }
 
-var repo = new DirectoryPackageRepository("./packages");
+var repo = new DirectoryPackageRepository("./packages", new BinaryManager());
 var bootstrap = new Bootstrap(repo) 
 { 
     StartupTargets = targets 

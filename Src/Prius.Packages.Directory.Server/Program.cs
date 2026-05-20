@@ -1,5 +1,6 @@
 using Prius.Core.Packages;
 using Prius.Core.Packages.Registry;
+using Prius.Engine;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -7,7 +8,7 @@ var storagePath = builder.Configuration["StoragePath"] ?? "packages";
 if (!Directory.Exists(storagePath)) 
     Directory.CreateDirectory(storagePath);
 
-builder.Services.AddSingleton<IPackageRepository>(new DirectoryPackageRepository(storagePath));
+builder.Services.AddSingleton<IPackageRepository>(new DirectoryPackageRepository(storagePath, new BinaryManager()));
 builder.Services.AddPackagesRegistry();
 
 var app = builder.Build();

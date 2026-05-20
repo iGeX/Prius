@@ -2,23 +2,25 @@
 using System.IO.Compression;
 using Microsoft.Extensions.Logging;
 using Prius.Core.Maps;
+using Prius.Engine.Abstractions;
 
 namespace Prius.Core.Packages;
 
 public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
 {
     private readonly string _rootPath;
+    private readonly IBinaryManager _binaryManager;
     private readonly ILogger<DirectoryPackageRepository>? _logger;
     private readonly ConcurrentDictionary<string, ConcurrentDictionary<string, ConcurrentDictionary<string, IMap>>> _manifests = new(StringComparer.OrdinalIgnoreCase);
-    private readonly ConcurrentDictionary<string, (string ZipPath, string EntryName)> _blobMap = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, List<(string Tfm, string Pkg, string Ver)>> _fileTracker = new(StringComparer.OrdinalIgnoreCase);
     private readonly FileSystemWatcher _watcher;
     private readonly SemaphoreSlim _lock = new(1, 1);
     private bool _isInitialized;
 
-    public DirectoryPackageRepository(string rootPath, ILogger<DirectoryPackageRepository>? logger = null)
+    public DirectoryPackageRepository(string rootPath, IBinaryManager binaryManager, ILogger<DirectoryPackageRepository>? logger = null)
     {
         _rootPath = Path.GetFullPath(rootPath);
+        _binaryManager = binaryManager;
         _logger = logger;
         _watcher = new FileSystemWatcher(_rootPath, "*.nupkg") 
         { 
@@ -114,17 +116,13 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
     {
         await EnsureInitializedAsync(ct);
         
-        if (!_blobMap.TryGetValue(hash, out var loc))
+        var path = new MapPath($"Packages/{hash}");
+        var accessor = _binaryManager.Get(path);
+        
+        if (!accessor.Exists)
             throw new FileNotFoundException($"Hash {hash} not found.");
 
-        await using var zip = new ZipArchive(File.OpenRead(loc.ZipPath), ZipArchiveMode.Read);
-        var ms = new MemoryStream();
-        
-        await using (var entryStream = await zip.GetEntry(loc.EntryName)!.OpenAsync(ct))
-            await entryStream.CopyToAsync(ms, ct);
-        
-        ms.Position = 0;
-        return ms;
+        return accessor.OpenStream();
     }
 
 #pragma warning disable CS0067
@@ -166,7 +164,10 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
             }
 
             _fileTracker[path] = tracked;
-            IndexBlobs(map["Assets"].AsMap(), path, string.Empty);
+            
+            using var packageStream = File.OpenRead(path);
+            using var archive = new ZipArchive(packageStream, ZipArchiveMode.Read);
+            IndexBlobs(map["Assets"].AsMap(), archive);
         }
         catch (Exception ex)
         {
@@ -188,15 +189,11 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
             }
         }
 
-        var toRemove = _blobMap.Where(kv => kv.Value.ZipPath.Equals(path, StringComparison.OrdinalIgnoreCase)).Select(kv => kv.Key).ToList();
-        foreach (var hash in toRemove) 
-            _blobMap.TryRemove(hash, out _);
-
         if (_logger?.IsEnabled(LogLevel.Debug) ?? false)
             _logger?.LogDebug("Removed package data for file: {Path}", path);
     }
 
-    private void IndexBlobs(IMap assets, string zipPath, string currentPath)
+    private void IndexBlobs(IMap assets, ZipArchive archive)
     {
         foreach (var key in assets.Keys())
         {
@@ -205,13 +202,25 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
                 continue;
 
             var subMap = value.AsMap();
-            var entryName = string.IsNullOrEmpty(currentPath) ? key : $"{currentPath}/{key}";
             var hash = subMap["hash"].AsValue<string>();
 
             if (string.IsNullOrEmpty(hash)) 
-                IndexBlobs(subMap, zipPath, entryName);
-            else 
-                _blobMap[hash] = (zipPath, entryName);
+                IndexBlobs(subMap, archive);
+            else
+            {
+                var entryPath = assets.Keys().First(k => assets[k].IsMap && assets[k].AsMap()["hash"].AsString() == hash);
+                var entry = archive.GetEntry(entryPath);
+                if (entry != null)
+                {
+                    using var entryStream = entry.Open();
+                    var ms = new MemoryStream();
+                    entryStream.CopyTo(ms);
+                    ms.Position = 0;
+                    
+                    var metadata = DictionaryMap.New.With("Hash", hash).AsMapValue();
+                    _binaryManager.Store(new MapPath($"Packages/{hash}"), metadata, ms);
+                }
+            }
         }
     }
 
