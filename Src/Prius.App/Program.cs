@@ -18,7 +18,7 @@ foreach (var arg in args)
     targets[path.Head] = path.Tail.ToString();
 }
 
-var repo = new DirectoryPackageRepository("./packages", new BinaryManager());
+var repo = new DirectoryPackageRepository("./packages", new BinaryManager(Path.Combine(Path.GetTempPath(), Path.GetRandomFileName())));
 var bootstrap = new Bootstrap(repo) 
 { 
     StartupTargets = targets 
@@ -34,7 +34,7 @@ Console.CancelKeyPress += (_, e) =>
 
 try 
 {
-    await bootstrap.Active();
+    await bootstrap.Activate();
     
     Console.WriteLine("[SYSTEM] Active. Waiting for signals...");
     await bootstrap.WaitAsync();

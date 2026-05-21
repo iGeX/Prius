@@ -61,7 +61,7 @@ public sealed class NativeBootstrapRuntime : IBootstrapRuntime
         GC.WaitForPendingFinalizers();
         GC.Collect();
 
-        _ = Task.Run(() => RetryDelete(_workDir, 5));
+        _ = Task.Run(() => RetryDelete(_workDir));
         await ValueTask.CompletedTask;
     }
 
@@ -82,22 +82,32 @@ public sealed class NativeBootstrapRuntime : IBootstrapRuntime
         return $"{os}-{arch}";
     }
 
-    private static async Task RetryDelete(string path, int retries)
+    private static async Task RetryDelete(string path)
     {
-        for (var i = 0; i < retries; i++)
+        const int Retries = 5;
+        var delayMs = 100; 
+
+        for (var i = 0; i < Retries; i++)
         {
             try 
             {
-                if (Directory.Exists(path))
-                    Directory.Delete(path, true);
-                
+                if (!Directory.Exists(path))
+                    return;
+
+                Directory.Delete(path, true);
                 return;
             }
-            catch 
+            catch
             {
-                await Task.Delay(1000);
+                if (i == Retries - 1)
+                    break;
+
+                await Task.Delay(delayMs);
+                delayMs *= 2;
             }
         }
+
+        Console.WriteLine($"Failed to delete temporary directory: {path}");
     }
 
     private sealed class CustomLoadContext(string workDir, string rid) 

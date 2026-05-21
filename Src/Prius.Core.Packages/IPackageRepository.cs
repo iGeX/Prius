@@ -49,5 +49,5 @@ public interface IPackageRepository
 
     event Func<ValueTask> OnTransitionToActive;
     
-    event Func<ValueTask> OnTransitionToDead;
+    event Func<ValueTask> OnTransitionToTerminated;
 }

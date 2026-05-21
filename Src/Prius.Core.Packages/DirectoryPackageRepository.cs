@@ -130,7 +130,7 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
     
     public event Func<ValueTask>? OnTransitionToActive;
     
-    public event Func<ValueTask>? OnTransitionToDead;
+    public event Func<ValueTask>? OnTransitionToTerminated;
 #pragma warning restore CS0067
     
     private async Task IndexFileAsync(string path)

@@ -17,7 +17,7 @@ public sealed class RavenPackageRepository(
 
     public event Func<ValueTask>? OnTransitionToStasis;
     public event Func<ValueTask>? OnTransitionToActive;
-    public event Func<ValueTask>? OnTransitionToDead;
+    public event Func<ValueTask>? OnTransitionToTerminated;
 
     public async ValueTask<IMap> GetPackages(CancellationToken ct = default)
     {

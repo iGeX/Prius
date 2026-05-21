@@ -60,6 +60,6 @@ public sealed class MockPackageRepository : IPackageRepository
     
     public event Func<ValueTask>? OnTransitionToActive;
     
-    public event Func<ValueTask>? OnTransitionToDead;
+    public event Func<ValueTask>? OnTransitionToTerminated;
 #pragma warning restore CS0067
 }

@@ -23,11 +23,11 @@ public sealed class Bootstrap
         _runtime = runtime;
 
         _repository.OnTransitionToStasis += Stasis;
-        _repository.OnTransitionToActive += Active;
-        _repository.OnTransitionToDead += Dead;
+        _repository.OnTransitionToActive += Activate;
+        _repository.OnTransitionToTerminated += Terminate;
     }
 
-    public async ValueTask Active()
+    public async ValueTask Activate()
     {
         try 
         {
@@ -83,7 +83,7 @@ public sealed class Bootstrap
     
     public Task WaitAsync() => _killSignal.Task;
 
-    private async ValueTask Dead()
+    private async ValueTask Terminate()
     {
         Console.WriteLine("[DEAD] Closing application...");
         await Stasis();
@@ -119,11 +119,12 @@ public sealed class Bootstrap
                 continue;
 
             await using var stream = await _repository.OpenStream(hash);
-            _loadedAssemblies.Add(await _runtime.LoadAssembly(stream));
+            var assembly = await _runtime.LoadAssembly(stream);
+            _loadedAssemblies.Add(assembly);
         }
     }
 
-    private void CollectContent(IMap contentFiles, IMap plan)
+    private static void CollectContent(IMap contentFiles, IMap plan)
     {
         foreach (var tfmKey in contentFiles.Keys())
         {
@@ -165,26 +166,6 @@ public sealed class Bootstrap
 
     private async ValueTask ExecuteEntry()
     {
-        foreach (var assembly in _loadedAssemblies)
-        {
-            foreach (var type in assembly.GetTypes())
-            {
-                if (type.Name != "PriusEntry")
-                    continue;
-
-                var method = type.GetMethod("RunAsync", [typeof(IMap)]) ?? type.GetMethod("RunAsync", []);
-                if (method == null)
-                    continue;
-
-                Console.WriteLine($"[START] {type.FullName}");
-                var instance = Activator.CreateInstance(type);
-                var args = method.GetParameters().Length > 0 ? [DictionaryMap.New] : Array.Empty<object>();
-                
-                if (method.Invoke(instance, args) is ValueTask vt)
-                    await vt;
-                
-                return;
-            }
-        }
+        //TODO
     }
 }
