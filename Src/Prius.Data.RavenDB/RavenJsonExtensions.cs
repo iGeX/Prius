@@ -6,7 +6,7 @@ using Core.Maps;
 using Sparrow.Json.Parsing;
 using System.Collections.Generic;
 
-internal static class RavenJsonExtensions
+public static class RavenJsonExtensions
 {
     private readonly struct StackItem(DynamicJsonValue targetJson, IMap map)
     {

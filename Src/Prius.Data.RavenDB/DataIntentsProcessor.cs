@@ -414,7 +414,7 @@ public sealed class DataIntentsProcessor(
         var command = new GetDocumentsCommand(holder.Store.Conventions, i.DocumentId, null, metadataOnly: true);
 
         using var context = JsonOperationContext.ShortTermSingleUse();
-        await holder.Store.GetRequestExecutor().ExecuteAsync(command, context);
+        await holder.Store.GetRequestExecutor().ExecuteAsync(command, context, null , i.Token);
         
         if (command.Result.Results is null || 
             command.Result.Results.Length == 0 ||

@@ -22,17 +22,20 @@ public sealed class RavenPackageRepository(
     public async ValueTask<IMap> GetPackages(CancellationToken ct = default)
     {
         using var session = storeHolder.Store.OpenAsyncSession();
-        var results = await session.Advanced.AsyncDocumentQuery<dynamic>("Packages/Packages/ByIdAndVersion")
-            .SelectFields<string>("Id")
-            .Distinct()
-            .ToListAsync(ct);
+        
+        var results = await session.Advanced.AsyncRawQuery<BlittableJsonReaderObject>(
+            "from index 'Packages/Packages/ByIdAndVersion' select Id"
+        ).ToListAsync(ct);
         
         var map = DictionaryMap.New;
-        foreach (var parts in results.Select(id => id.Split('/')).Where(parts => parts.Length > 1)) map[parts[1]] = true;
+        
+        foreach (var doc in results)
+        {
+            if (doc.TryGet("Id", out string id) && !string.IsNullOrEmpty(id))
+                map[id] = true;
+        }
         
         logger?.LogInformation("GetPackages retrieved {Count} packages", map.Keys().Count());
-        if (logger?.IsEnabled(LogLevel.Debug) ?? false)
-            logger.LogDebug("GetPackages result: {Map}", map.Serialize());
         
         return map;
     }
@@ -41,24 +44,92 @@ public sealed class RavenPackageRepository(
     {
         logger?.LogInformation("GetVersions requested for TFM {Tfm} with {Count} IDs", tfm, ids.Keys().Count());
         
-        using var session = storeHolder.Store.OpenAsyncSession(new SessionOptions { NoTracking = true });
-        var query = session.Advanced.AsyncDocumentQuery<dynamic>("Packages/Packages/ByIdAndVersion");
-        
         var idList = ids.Keys().ToList();
-        var results = await query.WhereIn("Id", idList).ToListAsync(ct);
-
         var response = DictionaryMap.New;
-        foreach (var doc in results)
+        
+        if (idList.Count == 0)
+            return response;
+
+        var isAny = tfm.Equals("any", StringComparison.OrdinalIgnoreCase);
+        using var session = storeHolder.Store.OpenAsyncSession(new SessionOptions { NoTracking = true });
+        
+        // ФИКС: Для конкретного TFM фильтруем на сервере по совместимой цепочке, для 'any' - берем все версии пакета
+        var rql = isAny
+            ? "from index 'Packages/Packages/ByIdAndVersion' where Id in ($ids) select Id, Version"
+            : "from index 'Packages/Packages/ByIdAndVersion' where Id in ($ids) and Tfms in ($tfms) select Id, Version, Tfms";
+
+        var query = session.Advanced.AsyncRawQuery<BlittableJsonReaderObject>(rql)
+            .WaitForNonStaleResults()
+            .AddParameter("ids", idList);
+        
+        if (!isAny)
+            query.AddParameter("tfms", FrameworkConstants.GetCompatible(tfm));
+
+        var results = await query.ToListAsync(ct);
+
+        // Сценарий 1: Если запрошен "any", никакого фолбека нет, просто плоским циклом собираем все версии
+        if (isAny)
         {
-            var id = (string)doc.Id;
-            var version = (string)doc.Version;
+            foreach (var doc in results)
+            {
+                if (!doc.TryGet("Id", out string id) || !doc.TryGet("Version", out string version))
+                    continue;
+
+                if (!response.ContainsKey(id))
+                    response[id] = DictionaryMap.New.AsMapValue();
+
+                response[id].AsMap()[version] = true;
+            }
+            return response;
+        }
+
+        // Сценарий 2: Если запрошен конкретный TFM, выполняем приоритетный Short-circuit фолбек
+        var compatibleTfms = FrameworkConstants.GetCompatible(tfm);
+
+        foreach (var targetPkgId in idList)
+        {
+            var versionsForBestTfm = DictionaryMap.New;
             
-            if (!response.ContainsKey(id)) response[id] = DictionaryMap.New.AsMapValue();
-            response[id].AsMap()[version] = true;
+            foreach (var currentTfm in compatibleTfms)
+            {
+                var foundVersionsForCurrentTfm = false;
+
+                foreach (var doc in results)
+                {
+                    if (!doc.TryGet("Id", out string id) || !string.Equals(id, targetPkgId, StringComparison.Ordinal))
+                        continue;
+
+                    if (!doc.TryGet("Version", out string version) || string.IsNullOrEmpty(version))
+                        continue;
+
+                    if (!doc.TryGet("Tfms", out BlittableJsonReaderArray tfmsArray))
+                        continue;
+
+                    var hasTfm = false;
+                    foreach (var indexedTfm in tfmsArray)
+                    {
+                        if (string.Equals(indexedTfm?.ToString(), currentTfm, StringComparison.Ordinal))
+                        {
+                            hasTfm = true;
+                            break;
+                        }
+                    }
+
+                    if (!hasTfm)
+                        continue;
+
+                    versionsForBestTfm[version] = true;
+                    foundVersionsForCurrentTfm = true;
+                }
+
+                if (foundVersionsForCurrentTfm)
+                {
+                    response[targetPkgId] = new MapValue(versionsForBestTfm);
+                    break;
+                }
+            }
         }
         
-        if(logger?.IsEnabled(LogLevel.Debug) ?? false)
-            logger.LogDebug("GetVersions result: {Map}", response.Serialize());
         return response;
     }
 
@@ -71,35 +142,42 @@ public sealed class RavenPackageRepository(
 
         foreach (var key in packages.Keys())
         {
-            var cacheKey = $"Manifest:{key}:{packages[key]}";
-            if (_manifestCache.TryGetValue(cacheKey, out IMap? manifest)) 
-                result[key] = new MapValue(manifest);
-            else
+            var version = packages[key].ToString();
+            var cacheKey = $"Manifest:{key}:{version}";
+            
+            if (_manifestCache.TryGetValue(cacheKey, out IMap? manifest) && manifest is not null)
             {
-                if(logger?.IsEnabled(LogLevel.Debug) ?? false)
-                    logger.LogDebug("Cache miss for manifest: {Key}", cacheKey);
-                toLoad.Add($"Packages/{key}/{packages[key]}");
+                result[key] = new MapValue(FilterManifestByTfm(manifest, tfm));
+                continue;
             }
+                
+            toLoad.Add($"Packages/{key}/{version}");
         }
 
-        if (toLoad.Count > 0)
+        if (toLoad.Count == 0)
+            return result;
+
+        using var session = storeHolder.Store.OpenAsyncSession(new SessionOptions { NoTracking = true });
+        var docs = await session.LoadAsync<BlittableJsonReaderObject>(toLoad, ct);
+        
+        foreach (var entry in docs)
         {
-            using var session = storeHolder.Store.OpenAsyncSession(new SessionOptions { NoTracking = true });
-            var docs = await session.LoadAsync<BlittableJsonReaderObject>(toLoad, ct);
-            foreach (var entry in docs)
-            {
-                if (entry.Value == null) 
-                    continue;
-                var map = await entry.Value.AsJsonReaderMap();
-                _manifestCache.Set(entry.Key, map, TimeSpan.FromMinutes(10));
-                    
-                var pkgId = entry.Key.Split('/')[1];
-                result[pkgId] = new MapValue(map);
-            }
+            if (entry.Value is null) 
+                continue;
+                
+            var map = await entry.Value.AsJsonReaderMap();
+            var parts = entry.Key.Split('/');
+
+            if (parts.Length <= 2) 
+                continue;
+         
+            // ФИКС: Используем строковые переменные вместо объекта массива parts
+            var cacheKey = $"Manifest:{parts[1]}:{parts[2]}";
+                
+            _manifestCache.Set(cacheKey, new DictionaryMap(map.DeepCopy()), TimeSpan.FromMinutes(10));
+            result[parts[1]] = new MapValue(FilterManifestByTfm(map, tfm));
         }
         
-        if(logger?.IsEnabled(LogLevel.Debug) ?? false)
-            logger.LogDebug("GetManifests result: {Map}", result.Serialize());
         return result;
     }
 
@@ -111,35 +189,94 @@ public sealed class RavenPackageRepository(
         if (accessor.Exists)
             return accessor.OpenStream();
 
-        if(logger?.IsEnabled(LogLevel.Debug) ?? false)
+        if (logger?.IsEnabled(LogLevel.Debug) ?? false)
             logger.LogDebug("Cache miss for asset {Hash}, fetching from RavenDB", hash);
 
-        using (var session = storeHolder.Store.OpenAsyncSession())
+        using var session = storeHolder.Store.OpenAsyncSession();
+        
+        var assetMatches = await session.Advanced.AsyncRawQuery<BlittableJsonReaderObject>(
+            "from index 'Packages/Assets/ByHash' where Hash = $hash select id()"
+        ).AddParameter("hash", hash)
+         .ToListAsync(ct);
+
+        if (assetMatches.Count == 0)
+            throw new FileNotFoundException($"Hash {hash} not found.");
+
+        var firstMatch = assetMatches[0];
+        if (!firstMatch.TryGet("id()", out string docId))
+            throw new InvalidOperationException("Corrupted asset index entry: missing id().");
+
+        var command = new Raven.Client.Documents.Commands.GetDocumentsCommand(
+            storeHolder.Store.Conventions, 
+            [docId], 
+            includes: null, 
+            metadataOnly: true
+        );
+
+        using var context = JsonOperationContext.ShortTermSingleUse();
+        await storeHolder.Store.GetRequestExecutor().ExecuteAsync(command, context, null, ct);
+
+        if (command.Result.Results is null || command.Result.Results.Length == 0)
+            return binaryManager.Get(new MapPath(hashPath.AsSpan())).OpenStream();
+
+        var doc = command.Result.Results;
+        if (doc[0] is not BlittableJsonReaderObject jsonObj)
+            return binaryManager.Get(new MapPath(hashPath.AsSpan())).OpenStream();
+
+        if (jsonObj.TryGet("@metadata", out BlittableJsonReaderObject metadata) && metadata.TryGet("@attachments", out BlittableJsonReaderArray attachments))
         {
-            var asset = await session.Advanced.AsyncDocumentQuery<dynamic>("Packages/Assets/ByHash")
-                .WhereEquals("Hash", hash)
-                .FirstOrDefaultAsync(ct);
-
-            if (asset == null)
-                throw new InvalidOperationException($"Asset with hash {hash} not found.");
-
-            var allAssets = await session.Advanced.AsyncDocumentQuery<dynamic>("Packages/Assets/ByDocumentId")
-                .WhereEquals("DocumentId", (string)asset.DocumentId)
-                .ToListAsync(ct);
-
-            foreach (var item in allAssets)
+            foreach (var obj in attachments)
             {
-                var assetHash = (string)item.Hash;
-                
-                using var attachment = await session.Advanced.Attachments.GetAsync((string)item.DocumentId, (string)item.AttachmentName, ct);
-                
-                var path = new MapPath($"Packages/{assetHash}".AsSpan());
-                binaryManager.Store(path, Empty.Instance, attachment.Stream);
+                if (obj is not BlittableJsonReaderObject attachmentObj) 
+                    continue;
+                    
+                if (!attachmentObj.TryGet("Name", out string attachmentHash)) 
+                    continue;
+
+                var targetPath = $"Packages/{attachmentHash}";
+                if (binaryManager.Get(targetPath).Exists)
+                    continue;
+
+                using var attachment = await session.Advanced.Attachments.GetAsync(docId, attachmentHash, ct);
+                if (attachment is null)
+                    continue;
+
+                binaryManager.Store(targetPath, Empty.Instance, attachment.Stream);
             }
         }
 
         return binaryManager.Get(new MapPath(hashPath.AsSpan())).OpenStream();
     }
 
-    public void Dispose() => _manifestCache.Dispose();
+    private static IMap FilterManifestByTfm(IMap fullManifest, string tfm)
+    {
+        var rootDependencies = fullManifest.Get(new MapPath("Dependencies".AsSpan()));
+        if (!rootDependencies.IsMap)
+            return fullManifest;
+
+        var depsMap = rootDependencies.AsMap();
+        var result = DictionaryMap.New;
+        
+        var info = fullManifest.Get(new MapPath("Info".AsSpan()));
+        if (info.IsMap)
+            result["Info"] = info;
+
+        var isAny = tfm.Equals("any", StringComparison.OrdinalIgnoreCase);
+        var tfmsToSearch = isAny ? depsMap.Keys() : FrameworkConstants.GetCompatible(tfm);
+
+        foreach (var currentTfm in tfmsToSearch)
+        {
+            var targetDeps = depsMap.Get(new MapPath(currentTfm.AsSpan()));
+            if (targetDeps.IsMap)
+            {
+                result["Dependencies"] = DictionaryMap.New.With(currentTfm, targetDeps.AsMap()).AsMapValue();
+                return result;
+            }
+        }
+
+        return result;
+    }
+
+    public void Dispose() => 
+        _manifestCache.Dispose();
 }
