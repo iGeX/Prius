@@ -72,6 +72,14 @@ public sealed class Bootstrap
         }
     }
     
+    private async ValueTask ExecuteEntry()
+    {
+        if (_loadedAssemblies.Count == 0)
+            return;
+        
+        //TODO
+    }
+    
     public async ValueTask Stasis()
     {
         if (_loadedAssemblies.Count == 0)
@@ -162,10 +170,5 @@ public sealed class Bootstrap
             await using var stream = await _repository.OpenStream(hash);
             await _runtime.WriteAsset(currentPath, stream);
         }
-    }
-
-    private async ValueTask ExecuteEntry()
-    {
-        //TODO
     }
 }
