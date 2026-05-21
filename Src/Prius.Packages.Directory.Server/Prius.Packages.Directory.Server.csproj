@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
     <ItemGroup>
-      <ProjectReference Include="..\Prius.Core.Packages.Registry\Prius.Core.Packages.Registry.csproj" />
+      <ProjectReference Include="..\Prius.PackagesRegistry\Prius.PackagesRegistry.csproj" />
       <ProjectReference Include="..\Prius.Engine\Prius.Engine.csproj" />
     </ItemGroup>
 </Project>

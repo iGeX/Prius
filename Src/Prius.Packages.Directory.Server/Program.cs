@@ -1,6 +1,7 @@
-using Prius.Core.Packages;
-using Prius.Core.Packages.Registry;
+using Prius.PackagesRegistry;
 using Prius.Engine;
+using Prius.Engine.Abstractions;
+using DirectoryPackageRepository = Prius.Packages.Directory.Server.DirectoryPackageRepository;
 
 var builder = WebApplication.CreateBuilder(args);
 

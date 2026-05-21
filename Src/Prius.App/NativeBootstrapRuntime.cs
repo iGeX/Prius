@@ -1,8 +1,9 @@
-﻿namespace Prius.Core.Packages;
-
-using System.Reflection;
-using System.Runtime.Loader;
+﻿using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Runtime.Loader;
+using Prius.Engine.Abstractions;
+
+namespace Prius.App;
 
 public sealed class NativeBootstrapRuntime : IBootstrapRuntime
 {
@@ -111,7 +112,7 @@ public sealed class NativeBootstrapRuntime : IBootstrapRuntime
     }
 
     private sealed class CustomLoadContext(string workDir, string rid) 
-        : AssemblyLoadContext("Prius.Body", isCollectible: true)
+        : AssemblyLoadContext(nameof(CustomLoadContext), isCollectible: true)
     {
         protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
         {

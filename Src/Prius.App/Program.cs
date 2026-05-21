@@ -1,6 +1,7 @@
+using Prius.App;
 using Prius.Core.Maps;
-using Prius.Core.Packages;
 using Prius.Engine;
+using Prius.Engine.Abstractions;
 
 if (args.Length == 0)
 {
@@ -18,8 +19,9 @@ foreach (var arg in args)
     targets[path.Head] = path.Tail.ToString();
 }
 
-var repo = new DirectoryPackageRepository("./packages", new BinaryManager(Path.Combine(Path.GetTempPath(), Path.GetRandomFileName())));
-var bootstrap = new Bootstrap(repo) 
+//TODO: RavenPackageRepository
+IPackageRepository repo = null; //new DirectoryPackageRepository("./packages", new BinaryManager(Path.Combine(Path.GetTempPath(), Path.GetRandomFileName())));
+var bootstrap = new Bootstrap(repo, new NativeBootstrapRuntime()) 
 { 
     StartupTargets = targets 
 };

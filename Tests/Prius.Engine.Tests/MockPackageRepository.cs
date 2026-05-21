@@ -1,8 +1,7 @@
 ﻿using Prius.Core.Maps;
-using Prius.Engine;
 using Prius.Engine.Abstractions;
 
-namespace Prius.Core.Packages.Tests;
+namespace Prius.Engine.Tests;
 
 public sealed class MockPackageRepository : IPackageRepository
 {

@@ -1,7 +1,8 @@
 ﻿using Prius.Core.Maps;
+using Prius.Engine.Packages;
 using Xunit;
 
-namespace Prius.Core.Packages.Tests;
+namespace Prius.Engine.Tests;
 
 public sealed class NuspecMapperTests
 {

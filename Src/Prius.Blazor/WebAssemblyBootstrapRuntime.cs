@@ -1,4 +1,4 @@
-﻿using Prius.Core.Packages;
+﻿using Prius.Engine.Abstractions;
 
 namespace Prius.Blazor;
 

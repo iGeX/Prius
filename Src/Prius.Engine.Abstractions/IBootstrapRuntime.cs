@@ -1,6 +1,6 @@
-﻿namespace Prius.Core.Packages;
+﻿using System.Reflection;
 
-using System.Reflection;
+namespace Prius.Engine.Abstractions;
 
 public interface IBootstrapRuntime : IAsyncDisposable
 {

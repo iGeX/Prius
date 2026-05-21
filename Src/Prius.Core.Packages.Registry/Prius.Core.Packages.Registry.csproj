@@ -1,9 +1,0 @@
-﻿<Project Sdk="Microsoft.NET.Sdk.Web">
-    <PropertyGroup>
-        <OutputType>Library</OutputType>
-    </PropertyGroup>
-  
-    <ItemGroup>
-      <ProjectReference Include="..\Prius.Core.Packages\Prius.Core.Packages.csproj" />
-    </ItemGroup>
-</Project>

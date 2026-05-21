@@ -1,6 +1,6 @@
 ﻿using Prius.Core.Maps;
 
-namespace Prius.Core.Packages;
+namespace Prius.Engine.Abstractions;
 
 /// <summary>
 /// Provides a storage abstraction for NuGet package metadata.

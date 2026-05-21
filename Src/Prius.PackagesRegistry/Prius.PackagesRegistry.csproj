@@ -1,0 +1,14 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <OutputType>Library</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NuGet.Versioning" Version="7.3.1"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Prius.Engine\Prius.Engine.csproj"/>
+  </ItemGroup>
+  
+</Project>

@@ -1,8 +1,8 @@
-﻿namespace Prius.Core.Packages;
+﻿namespace Prius.Engine.Abstractions;
 
 public static class FrameworkConstants
 {
-    public const string Any = "any";
+    private const string Any = "any";
     
     private static readonly Dictionary<string, string[]> Compatibility = new(StringComparer.OrdinalIgnoreCase)
     {

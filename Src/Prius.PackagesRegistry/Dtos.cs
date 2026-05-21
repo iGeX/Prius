@@ -1,6 +1,6 @@
 ﻿using System.Text.Json.Serialization;
 
-namespace Prius.Core.Packages.Registry;
+namespace Prius.PackagesRegistry;
 
 public record ServiceIndexDto(
     [property: JsonPropertyName("version")] string Version,

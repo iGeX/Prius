@@ -1,10 +1,10 @@
 ﻿using System.Collections.Concurrent;
 using System.IO.Compression;
-using Microsoft.Extensions.Logging;
 using Prius.Core.Maps;
 using Prius.Engine.Abstractions;
+using Prius.Engine.Packages;
 
-namespace Prius.Core.Packages;
+namespace Prius.Packages.Directory.Server;
 
 public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
 {
@@ -237,7 +237,7 @@ public sealed class DirectoryPackageRepository : IPackageRepository, IDisposable
 
             _logger?.LogInformation("Initializing DirectoryPackageRepository at {Path}", _rootPath);
 
-            foreach (var file in Directory.GetFiles(_rootPath, "*.nupkg"))
+            foreach (var file in System.IO.Directory.GetFiles(_rootPath, "*.nupkg"))
                 await IndexFileAsync(file);
 
             _isInitialized = true;

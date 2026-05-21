@@ -1,8 +1,10 @@
 ﻿using Microsoft.Extensions.Caching.Memory;
 using NuGet.Versioning;
 using Prius.Core.Maps;
+using Prius.Engine.Abstractions;
+using Prius.Engine.Packages;
 
-namespace Prius.Core.Packages.Registry;
+namespace Prius.PackagesRegistry;
 
 public static class PackagesRegistryExtensions
 {

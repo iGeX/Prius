@@ -1,7 +1,9 @@
-﻿namespace Prius.Core.Packages;
+﻿using System.Reflection;
+using Prius.Core.Maps;
+using Prius.Engine.Abstractions;
+using Prius.Engine.Packages;
 
-using System.Reflection;
-using Maps;
+namespace Prius.Engine;
 
 public sealed class Bootstrap
 {
@@ -14,11 +16,12 @@ public sealed class Bootstrap
     private readonly IBootstrapRuntime _runtime;
 
     public IMap StartupTargets { get; init; } = DictionaryMap.New;
-
-    public Bootstrap(IPackageRepository repository) : this(repository, new NativeBootstrapRuntime()) { }
     
     public Bootstrap(IPackageRepository repository, IBootstrapRuntime runtime)
     {
+        ArgumentNullException.ThrowIfNull(repository);
+        ArgumentNullException.ThrowIfNull(runtime);
+        
         _repository = repository;
         _runtime = runtime;
 
