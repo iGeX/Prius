@@ -45,9 +45,9 @@ public interface IPackageRepository
     /// <param name="ct">Cancellation token.</param>
     ValueTask<Stream> OpenStream(string hash, CancellationToken ct = default);
     
-    event Func<ValueTask> OnStasisRequested;
+    event Func<ValueTask> OnTransitionToStasis;
 
-    event Func<ValueTask> OnBirthRequested;
+    event Func<ValueTask> OnTransitionToActive;
     
-    event Func<ValueTask> OnKillRequested;
+    event Func<ValueTask> OnTransitionToDead;
 }

@@ -56,10 +56,10 @@ public sealed class MockPackageRepository : IPackageRepository
         new(_binaryManager.Get(new MapPath($"Packages/{hash}")).OpenStream());
 
 #pragma warning disable CS0067
-    public event Func<ValueTask>? OnStasisRequested;
+    public event Func<ValueTask>? OnTransitionToStasis;
     
-    public event Func<ValueTask>? OnBirthRequested;
+    public event Func<ValueTask>? OnTransitionToActive;
     
-    public event Func<ValueTask>? OnKillRequested;
+    public event Func<ValueTask>? OnTransitionToDead;
 #pragma warning restore CS0067
 }

@@ -9,8 +9,9 @@ public sealed class RoutingTrie
 
     public void AddRoute(string pathPattern, IReactor reactor)
     {
-        if (string.IsNullOrWhiteSpace(pathPattern)) throw new ArgumentNullException(nameof(pathPattern));
-        if (reactor == null) throw new ArgumentNullException(nameof(reactor));
+        if (string.IsNullOrWhiteSpace(pathPattern)) 
+            throw new ArgumentNullException(nameof(pathPattern));
+        ArgumentNullException.ThrowIfNull(reactor);
 
         MapPath path = pathPattern;
         var current = _root;
@@ -20,20 +21,17 @@ public sealed class RoutingTrie
             var segment = path.Head;
             path = path.Tail;
 
-            if (segment == "**")
+            switch (segment)
             {
-                current.DeepWildcardReactor = reactor;
-                return;
-            }
-            
-            if (segment == "*")
-            {
-                if (path.IsEmpty)
-                {
+                case "**":
+                    current.DeepWildcardReactor = reactor;
+                    return;
+                case "*" when path.IsEmpty:
                     current.WildcardReactor = reactor;
                     return;
-                }
-                segment = "@wildcard"; 
+                case "*":
+                    segment = "@wildcard";
+                    break;
             }
 
             if (!current.Children.TryGetValue(segment, out var nextNode))
@@ -96,10 +94,9 @@ public sealed class RoutingTrie
         if (current.TerminalReactor != null)
             return new ResolveResult(current.TerminalReactor, string.Empty, lastMatchedKey);
 
-        if (fallbackReactor != null)
-            return new ResolveResult(fallbackReactor, SlicePath(originalPath, fallbackDepth), fallbackKey);
-
-        return new ResolveResult(EmptyReactor.Instance, string.Empty, lastMatchedKey);
+        return fallbackReactor != null 
+            ? new ResolveResult(fallbackReactor, SlicePath(originalPath, fallbackDepth), fallbackKey) 
+            : new ResolveResult(EmptyReactor.Instance, string.Empty, lastMatchedKey);
     }
 
     private static MapPath SlicePath(MapPath path, int segmentsToSkip)
@@ -115,6 +112,8 @@ public sealed class RoutingTrie
 public readonly ref struct ResolveResult(IReactor reactor, MapPath remainingPath, string reactorKey)
 {
     public IReactor Reactor { get; } = reactor;
+    
     public MapPath RemainingPath { get; } = remainingPath;
+    
     public string ReactorKey { get; } = reactorKey;
 }

@@ -22,12 +22,12 @@ public sealed class Bootstrap
         _repository = repository;
         _runtime = runtime;
 
-        _repository.OnStasisRequested += Stasis;
-        _repository.OnBirthRequested += Birth;
-        _repository.OnKillRequested += Kill;
+        _repository.OnTransitionToStasis += Stasis;
+        _repository.OnTransitionToActive += Active;
+        _repository.OnTransitionToDead += Dead;
     }
 
-    public async ValueTask Birth()
+    public async ValueTask Active()
     {
         try 
         {
@@ -67,7 +67,7 @@ public sealed class Bootstrap
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[BIRTH ERROR] {ex.Message}");
+            Console.WriteLine($"[ACTIVE ERROR] {ex.Message}");
             throw;
         }
     }
@@ -83,9 +83,9 @@ public sealed class Bootstrap
     
     public Task WaitAsync() => _killSignal.Task;
 
-    private async ValueTask Kill()
+    private async ValueTask Dead()
     {
-        Console.WriteLine("[KILL] Closing application...");
+        Console.WriteLine("[DEAD] Closing application...");
         await Stasis();
         _killSignal.TrySetResult();
     }

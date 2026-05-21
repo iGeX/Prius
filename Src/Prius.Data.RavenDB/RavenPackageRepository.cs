@@ -15,9 +15,9 @@ public sealed class RavenPackageRepository(
 {
     private readonly MemoryCache _manifestCache = new(new MemoryCacheOptions());
 
-    public event Func<ValueTask>? OnStasisRequested;
-    public event Func<ValueTask>? OnBirthRequested;
-    public event Func<ValueTask>? OnKillRequested;
+    public event Func<ValueTask>? OnTransitionToStasis;
+    public event Func<ValueTask>? OnTransitionToActive;
+    public event Func<ValueTask>? OnTransitionToDead;
 
     public async ValueTask<IMap> GetPackages(CancellationToken ct = default)
     {

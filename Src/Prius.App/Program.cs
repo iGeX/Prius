@@ -34,7 +34,7 @@ Console.CancelKeyPress += (_, e) =>
 
 try 
 {
-    await bootstrap.Birth();
+    await bootstrap.Active();
     
     Console.WriteLine("[SYSTEM] Active. Waiting for signals...");
     await bootstrap.WaitAsync();
