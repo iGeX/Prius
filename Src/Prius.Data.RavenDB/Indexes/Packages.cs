@@ -55,24 +55,19 @@ public sealed class Packages_Assets_ByHash : AbstractIndexCreationTask
     public override IndexDefinition CreateIndexDefinition() => new()
     {
         Name = "Packages/Assets/ByHash",
-        // Абсолютно безопасный, детерминированный обход дерева ассетов NuGet без рекурсии.
-        // Полностью защищен от RuntimeBinderException и StackOverflow под параллельной нагрузкой.
         Maps = { 
             """
             map('Packages', function (doc) {
                 var results = [];
                 if (!doc.Assets || !doc.Assets.lib) return results;
                 
-                // Шаг 1: Бежим по пакам фреймворков (lib -> net10_0, net8.0)
                 for (var tfmKey in doc.Assets.lib) {
                     var tfmFolder = doc.Assets.lib[tfmKey];
                     if (!tfmFolder) continue;
                     
-                    // Шаг 2: Бежим по файлам внутри текущего фреймворка
                     for (var fileKey in tfmFolder) {
                         var fileNode = tfmFolder[fileKey];
                         
-                        // Проверяем наличие свойства hash в любом регистре (Nuspec/IndexBlobs конвенции)
                         if (fileNode && (fileNode.Hash || fileNode.hash)) {
                             results.push({ 
                                 Hash: fileNode.Hash || fileNode.hash

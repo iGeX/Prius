@@ -53,7 +53,6 @@ public sealed class RavenPackageRepository(
         var isAny = tfm.Equals("any", StringComparison.OrdinalIgnoreCase);
         using var session = storeHolder.Store.OpenAsyncSession(new SessionOptions { NoTracking = true });
         
-        // ФИКС: Для конкретного TFM фильтруем на сервере по совместимой цепочке, для 'any' - берем все версии пакета
         var rql = isAny
             ? "from index 'Packages/Packages/ByIdAndVersion' where Id in ($ids) select Id, Version"
             : "from index 'Packages/Packages/ByIdAndVersion' where Id in ($ids) and Tfms in ($tfms) select Id, Version, Tfms";
@@ -67,7 +66,6 @@ public sealed class RavenPackageRepository(
 
         var results = await query.ToListAsync(ct);
 
-        // Сценарий 1: Если запрошен "any", никакого фолбека нет, просто плоским циклом собираем все версии
         if (isAny)
         {
             foreach (var doc in results)
@@ -83,7 +81,6 @@ public sealed class RavenPackageRepository(
             return response;
         }
 
-        // Сценарий 2: Если запрошен конкретный TFM, выполняем приоритетный Short-circuit фолбек
         var compatibleTfms = FrameworkConstants.GetCompatible(tfm);
 
         foreach (var targetPkgId in idList)
@@ -105,15 +102,7 @@ public sealed class RavenPackageRepository(
                     if (!doc.TryGet("Tfms", out BlittableJsonReaderArray tfmsArray))
                         continue;
 
-                    var hasTfm = false;
-                    foreach (var indexedTfm in tfmsArray)
-                    {
-                        if (string.Equals(indexedTfm?.ToString(), currentTfm, StringComparison.Ordinal))
-                        {
-                            hasTfm = true;
-                            break;
-                        }
-                    }
+                    var hasTfm = tfmsArray.Any(indexedTfm => string.Equals(indexedTfm?.ToString(), currentTfm, StringComparison.Ordinal));
 
                     if (!hasTfm)
                         continue;
@@ -122,11 +111,11 @@ public sealed class RavenPackageRepository(
                     foundVersionsForCurrentTfm = true;
                 }
 
-                if (foundVersionsForCurrentTfm)
-                {
-                    response[targetPkgId] = new MapValue(versionsForBestTfm);
-                    break;
-                }
+                if (!foundVersionsForCurrentTfm)
+                    continue;
+                
+                response[targetPkgId] = new MapValue(versionsForBestTfm);
+                break;
             }
         }
         
@@ -170,11 +159,8 @@ public sealed class RavenPackageRepository(
 
             if (parts.Length <= 2) 
                 continue;
-         
-            // ФИКС: Используем строковые переменные вместо объекта массива parts
-            var cacheKey = $"Manifest:{parts[1]}:{parts[2]}";
-                
-            _manifestCache.Set(cacheKey, new DictionaryMap(map.DeepCopy()), TimeSpan.FromMinutes(10));
+            
+            _manifestCache.Set($"Manifest:{parts[1]}:{parts[2]}", new DictionaryMap(map.DeepCopy()), TimeSpan.FromMinutes(10));
             result[parts[1]] = new MapValue(FilterManifestByTfm(map, tfm));
         }
         
@@ -195,10 +181,9 @@ public sealed class RavenPackageRepository(
         using var session = storeHolder.Store.OpenAsyncSession();
         
         var assetMatches = await session.Advanced.AsyncRawQuery<BlittableJsonReaderObject>(
-            "from index 'Packages/Assets/ByHash' where Hash = $hash select id()"
-        ).AddParameter("hash", hash)
-         .ToListAsync(ct);
-
+                "from index 'Packages/Assets/ByHash' where Hash = $hash select id()")
+            .AddParameter("hash", hash).ToListAsync(ct);
+        
         if (assetMatches.Count == 0)
             throw new FileNotFoundException($"Hash {hash} not found.");
 
@@ -220,29 +205,28 @@ public sealed class RavenPackageRepository(
             return binaryManager.Get(new MapPath(hashPath.AsSpan())).OpenStream();
 
         var doc = command.Result.Results;
-        if (doc[0] is not BlittableJsonReaderObject jsonObj)
+        if (doc[0] is not BlittableJsonReaderObject jsonObj || 
+                !jsonObj.TryGet("@metadata", out BlittableJsonReaderObject metadata) || 
+                !metadata.TryGet("@attachments", out BlittableJsonReaderArray attachments))
             return binaryManager.Get(new MapPath(hashPath.AsSpan())).OpenStream();
 
-        if (jsonObj.TryGet("@metadata", out BlittableJsonReaderObject metadata) && metadata.TryGet("@attachments", out BlittableJsonReaderArray attachments))
+        foreach (var obj in attachments)
         {
-            foreach (var obj in attachments)
-            {
-                if (obj is not BlittableJsonReaderObject attachmentObj) 
-                    continue;
+            if (obj is not BlittableJsonReaderObject attachmentObj) 
+                continue;
                     
-                if (!attachmentObj.TryGet("Name", out string attachmentHash)) 
-                    continue;
+            if (!attachmentObj.TryGet("Name", out string attachmentHash)) 
+                continue;
 
-                var targetPath = $"Packages/{attachmentHash}";
-                if (binaryManager.Get(targetPath).Exists)
-                    continue;
+            var targetPath = $"Packages/{attachmentHash}";
+            if (binaryManager.Get(targetPath).Exists)
+                continue;
 
-                using var attachment = await session.Advanced.Attachments.GetAsync(docId, attachmentHash, ct);
-                if (attachment is null)
-                    continue;
+            using var attachment = await session.Advanced.Attachments.GetAsync(docId, attachmentHash, ct);
+            if (attachment is null)
+                continue;
 
-                binaryManager.Store(targetPath, Empty.Instance, attachment.Stream);
-            }
+            binaryManager.Store(targetPath, Empty.Instance, attachment.Stream);
         }
 
         return binaryManager.Get(new MapPath(hashPath.AsSpan())).OpenStream();
@@ -267,11 +251,11 @@ public sealed class RavenPackageRepository(
         foreach (var currentTfm in tfmsToSearch)
         {
             var targetDeps = depsMap.Get(new MapPath(currentTfm.AsSpan()));
-            if (targetDeps.IsMap)
-            {
-                result["Dependencies"] = DictionaryMap.New.With(currentTfm, targetDeps.AsMap()).AsMapValue();
-                return result;
-            }
+            if (!targetDeps.IsMap)
+                continue;
+            
+            result["Dependencies"] = DictionaryMap.New.With(currentTfm, targetDeps.AsMap()).AsMapValue();
+            return result;
         }
 
         return result;
