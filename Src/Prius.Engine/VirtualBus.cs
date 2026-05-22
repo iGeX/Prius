@@ -20,7 +20,7 @@ public sealed class VirtualBus
     private readonly ConcurrentDictionary<string, IReactor>.AlternateLookup<ReadOnlySpan<char>> _cacheLookup;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _nodeLocks = new(StringComparer.Ordinal);
     
-    private readonly RoutingTrie _routingTrie;
+    private RoutingTrie _routingTrie;
     private readonly ReactorContext _rootContext;
     
     private readonly ThreadLocal<Queue<DeferredNotifyTask>> _deferredTasks = new(() => new());
@@ -33,19 +33,33 @@ public sealed class VirtualBus
         _rootContext = new ReactorContext(this, null, string.Empty, string.Empty, string.Empty, DictionaryMap.New);
     }
 
-    public void Put(MapPath path, MapValue value, IMap? envPatch = null) => 
+    public void UpdateTrie(RoutingTrie trie)
+    {
+        _routingTrie = trie;
+        ClearCache();
+    }
+
+    public void Put(MapPath path, MapValue value, IMap? envPatch = null)
+    {
         DispatchPut(_rootContext, path, value, envPatch);
+    }
 
-    public MapValue Get(MapPath path, IMap? envPatch = null) => 
-        DispatchGet(_rootContext, path, envPatch);
+    public MapValue Get(MapPath path, IMap? envPatch = null)
+    {
+        return DispatchGet(_rootContext, path, envPatch);
+    }
 
-    public void ClearCache() => 
+    public void ClearCache()
+    {
         _routeCache.Clear();
+    }
 
     internal void DispatchPut(ReactorContext caller, MapPath relativePath, MapValue value, IMap? envPatch)
     {
         if (relativePath.IsEmpty)
+        {
             return;
+        }
 
         var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
         var nodeLock = _nodeLocks.GetOrAdd(absolutePathString, _ => new SemaphoreSlim(1, 1));
@@ -69,7 +83,9 @@ public sealed class VirtualBus
     internal MapValue DispatchGet(ReactorContext caller, MapPath relativePath, IMap? envPatch)
     {
         if (relativePath.IsEmpty)
+        {
             return new MapValue();
+        }
 
         var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
         var nodeLock = _nodeLocks.GetOrAdd(absolutePathString, _ => new SemaphoreSlim(1, 1));
@@ -93,12 +109,16 @@ public sealed class VirtualBus
     internal void DispatchNotify(ReactorContext caller, MapPath path, MapValue value)
     {
         if (path.IsEmpty || caller.Parent is null)
+        {
             return;
+        }
 
         _deferredTasks.Value!.Enqueue(new DeferredNotifyTask(caller, path.ToString(), value));
 
         if (!_isProcessingTick.Value)
+        {
             ProcessDeferredTicks();
+        }
     }
 
     private void ProcessDeferredTicks()
@@ -125,7 +145,9 @@ public sealed class VirtualBus
         var parentContext = childContext.Parent;
 
         if (parentContext is null)
+        {
             return;
+        }
 
         var currentParentPathString = GetParentAbsolutePath(childContext.AbsolutePath);
         IReactor resolveReactor = EmptyReactor.Instance;
@@ -143,15 +165,18 @@ public sealed class VirtualBus
                 break;
             }
 
-            // Если поднялись до корня и ничего не нашли — выходим
             if (string.IsNullOrEmpty(currentParentPathString))
+            {
                 break;
+            }
 
             currentParentPathString = GetParentAbsolutePath(currentParentPathString);
         }
 
         if (resolveReactor is EmptyReactor)
+        {
             return;
+        }
 
         var nodeLock = _nodeLocks.GetOrAdd(finalParentPathString, _ => new SemaphoreSlim(1, 1));
         nodeLock.Wait();
@@ -182,11 +207,15 @@ public sealed class VirtualBus
     private static string GetParentAbsolutePath(string absolutePath)
     {
         if (string.IsNullOrEmpty(absolutePath))
+        {
             return string.Empty;
+        }
 
         var lastSlashIndex = absolutePath.LastIndexOf('/');
         if (lastSlashIndex < 0)
+        {
             return string.Empty;
+        }
 
         return absolutePath[..lastSlashIndex];
     }
@@ -194,13 +223,17 @@ public sealed class VirtualBus
     private void CacheResolvedRoute(ReadOnlySpan<char> absolutePath, IReactor reactor)
     {
         if (_cacheLookup.TryGetValue(absolutePath, out _))
+        {
             return;
+        }
 
         _cacheLookup.TryAdd(absolutePath, reactor);
     }
 
-    private static string CombinePathsToString(string baseAbsolutePath, MapPath relativePath) => 
-        string.IsNullOrEmpty(baseAbsolutePath) 
+    private static string CombinePathsToString(string baseAbsolutePath, MapPath relativePath)
+    {
+        return string.IsNullOrEmpty(baseAbsolutePath) 
             ? relativePath.ToString() 
             : new MapPath(baseAbsolutePath.AsSpan()) + relativePath;
+    }
 }

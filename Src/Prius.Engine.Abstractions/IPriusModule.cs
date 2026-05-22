@@ -7,7 +7,7 @@ public interface IPriusModule
 {
     void ConfigureServices(IServiceCollection services, IConfiguration configuration);
     
-    ValueTask Activate(IServiceProvider serviceProvider, IConfiguration configuration);
+    ValueTask Activate(IServiceProvider serviceProvider, IConfiguration configuration, CancellationToken ct);
     
-    ValueTask Stasis();
+    ValueTask Stasis(CancellationToken ct);
 }
