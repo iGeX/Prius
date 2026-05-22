@@ -4,7 +4,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Prius.Core.Maps;
 using Prius.Engine.Abstractions;
-using Prius.Engine.Packages;
+using Prius.Engine.Nuspec;
 
 namespace Prius.Engine;
 

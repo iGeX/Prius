@@ -2,7 +2,7 @@
 using System.Text;
 using System.Text.Json;
 using Prius.Core.Maps;
-using Prius.Engine.Packages;
+using Prius.Engine.Nuspec;
 using Xunit;
 
 namespace Prius.Engine.Tests;
