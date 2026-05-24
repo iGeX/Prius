@@ -1,4 +1,4 @@
-﻿namespace Prius.Engine;
+namespace Prius.Engine;
 
 using System;
 using System.Collections.Concurrent;
@@ -7,14 +7,7 @@ using System.Threading;
 using Core.Maps;
 using Abstractions;
 
-internal sealed class DeferredNotifyTask(ReactorContext childContext, string materializedPath, MapValue value)
-{
-    public ReactorContext ChildContext => childContext;
-    public string MaterializedPath => materializedPath;
-    public MapValue Value => value;
-}
-
-public sealed class VirtualBus
+public sealed class VirtualBus : IMap
 {
     private readonly ConcurrentDictionary<string, IReactor> _routeCache = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, IReactor>.AlternateLookup<ReadOnlySpan<char>> _cacheLookup;
@@ -22,9 +15,7 @@ public sealed class VirtualBus
     
     private RoutingTrie _routingTrie;
     private readonly ReactorContext _rootContext;
-    
-    private readonly ThreadLocal<Queue<DeferredNotifyTask>> _deferredTasks = new(() => new());
-    private readonly ThreadLocal<bool> _isProcessingTick = new(() => false);
+    private readonly BusMemoryNode _memoryRoot = new();
 
     public VirtualBus(RoutingTrie routingTrie)
     {
@@ -39,27 +30,16 @@ public sealed class VirtualBus
         ClearCache();
     }
 
-    public void Put(MapPath path, MapValue value, IMap? envPatch = null)
-    {
-        DispatchPut(_rootContext, path, value, envPatch);
-    }
+    public bool Put(MapPath path, MapValue value, IMap? envPatch = null) => DispatchPut(_rootContext, path, value, envPatch);
 
-    public MapValue Get(MapPath path, IMap? envPatch = null)
-    {
-        return DispatchGet(_rootContext, path, envPatch);
-    }
+    public MapValue Get(MapPath path, IMap? envPatch = null) => DispatchGet(_rootContext, path, envPatch);
 
-    public void ClearCache()
-    {
-        _routeCache.Clear();
-    }
+    public void ClearCache() => _routeCache.Clear();
 
-    internal void DispatchPut(ReactorContext caller, MapPath relativePath, MapValue value, IMap? envPatch)
+    internal bool DispatchPut(ReactorContext caller, MapPath relativePath, MapValue value, IMap? envPatch)
     {
         if (relativePath.IsEmpty)
-        {
-            return;
-        }
+            return false;
 
         var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
         var nodeLock = _nodeLocks.GetOrAdd(absolutePathString, _ => new SemaphoreSlim(1, 1));
@@ -68,11 +48,19 @@ public sealed class VirtualBus
         try
         {
             var resolveResult = _routingTrie.Resolve(new MapPath(absolutePathString.AsSpan()));
+            
+            if (resolveResult.Reactor is EmptyReactor)
+            {
+                WriteToMemory(absolutePathString, value);
+                return false;
+            }
+
             CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Reactor);
 
-            var subContext = new ReactorContext(this, caller, resolveResult.ReactorKey, absolutePathString, resolveResult.ReactorKey, envPatch);
+            var callerSegment = relativePath.Head;
+            var subContext = new ReactorContext(this, caller, callerSegment, absolutePathString, resolveResult.ReactorKey, envPatch);
 
-            resolveResult.Reactor.Put(subContext, resolveResult.RemainingPath, value);
+            return resolveResult.Reactor.Put(subContext, resolveResult.RemainingPath, value);
         }
         finally
         {
@@ -83,9 +71,7 @@ public sealed class VirtualBus
     internal MapValue DispatchGet(ReactorContext caller, MapPath relativePath, IMap? envPatch)
     {
         if (relativePath.IsEmpty)
-        {
             return new MapValue();
-        }
 
         var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
         var nodeLock = _nodeLocks.GetOrAdd(absolutePathString, _ => new SemaphoreSlim(1, 1));
@@ -94,9 +80,13 @@ public sealed class VirtualBus
         try
         {
             var resolveResult = _routingTrie.Resolve(new MapPath(absolutePathString.AsSpan()));
+            
+            if (resolveResult.Reactor is EmptyReactor) return ReadFromMemory(absolutePathString);
+
             CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Reactor);
 
-            var subContext = new ReactorContext(this, caller, resolveResult.ReactorKey, absolutePathString, resolveResult.ReactorKey, envPatch);
+            var callerSegment = relativePath.Head;
+            var subContext = new ReactorContext(this, caller, callerSegment, absolutePathString, resolveResult.ReactorKey, envPatch);
 
             return resolveResult.Reactor.Get(subContext, resolveResult.RemainingPath);
         }
@@ -106,134 +96,101 @@ public sealed class VirtualBus
         }
     }
 
-    internal void DispatchNotify(ReactorContext caller, MapPath path, MapValue value)
+    internal void DispatchPutAbsolute(MapPath absolutePath, MapValue value)
     {
-        if (path.IsEmpty || caller.Parent is null)
-        {
+        if (absolutePath.IsEmpty)
             return;
-        }
 
-        _deferredTasks.Value!.Enqueue(new DeferredNotifyTask(caller, path.ToString(), value));
+        var pathStr = absolutePath.ToString();
 
-        if (!_isProcessingTick.Value)
+        ThreadPool.QueueUserWorkItem(_ =>
         {
-            ProcessDeferredTicks();
-        }
+            try
+            {
+                Put(pathStr, value);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[VirtualBus] Background PutAbsolute Error: {ex.Message}");
+            }
+        });
     }
 
-    private void ProcessDeferredTicks()
+    private void WriteToMemory(string absolutePath, MapValue value)
     {
-        _isProcessingTick.Value = true;
+        var path = new MapPath(absolutePath.AsSpan());
+        var current = _memoryRoot;
 
-        try
+        while (!path.IsEmpty)
         {
-            var queue = _deferredTasks.Value!;
-            while (queue.Count > 0)
+            var segment = path.Head;
+            path = path.Tail;
+
+            if (string.IsNullOrEmpty(segment)) continue;
+
+            if (path.IsEmpty)
             {
-                ExecuteNotifyTask(queue.Dequeue());
-            }
-        }
-        finally
-        {
-            _isProcessingTick.Value = false;
-        }
-    }
-
-    private void ExecuteNotifyTask(DeferredNotifyTask task)
-    {
-        var childContext = task.ChildContext;
-        var parentContext = childContext.Parent;
-
-        if (parentContext is null)
-        {
-            return;
-        }
-
-        var currentParentPathString = GetParentAbsolutePath(childContext.AbsolutePath);
-        IReactor resolveReactor = EmptyReactor.Instance;
-        var finalParentPathString = currentParentPathString;
-
-        while (true)
-        {
-            var parentPath = new MapPath(currentParentPathString.AsSpan());
-            var resolveResult = _routingTrie.Resolve(parentPath);
-
-            if (resolveResult.Reactor is not EmptyReactor)
-            {
-                resolveReactor = resolveResult.Reactor;
-                finalParentPathString = currentParentPathString;
-                break;
+                current[segment] = value;
+                return;
             }
 
-            if (string.IsNullOrEmpty(currentParentPathString))
-            {
-                break;
-            }
-
-            currentParentPathString = GetParentAbsolutePath(currentParentPathString);
-        }
-
-        if (resolveReactor is EmptyReactor)
-        {
-            return;
-        }
-
-        var nodeLock = _nodeLocks.GetOrAdd(finalParentPathString, _ => new SemaphoreSlim(1, 1));
-        nodeLock.Wait();
-
-        try
-        {
-            var childRelativePath = childContext.AbsolutePath[finalParentPathString.Length..]
-                .TrimStart('/');
-
-            var childPrefix = string.IsNullOrEmpty(childRelativePath)
-                ? default
-                : new MapPath(childRelativePath.AsSpan());
-
-            var localPath = new MapPath(task.MaterializedPath.AsSpan());
+            current.Children ??= new Dictionary<string, BusMemoryNode>(StringComparer.Ordinal);
             
-            var transformedPath = childPrefix.IsEmpty 
-                ? localPath 
-                : new MapPath((childPrefix + localPath).AsSpan());
-
-            resolveReactor.Notify(parentContext, transformedPath, task.Value);
-        }
-        finally
-        {
-            nodeLock.Release();
+            if (!current.Children.TryGetValue(segment, out var nextNode))
+            {
+                nextNode = new BusMemoryNode();
+                current.Children[segment] = nextNode;
+            }
+            current = nextNode;
         }
     }
 
-    private static string GetParentAbsolutePath(string absolutePath)
+    private MapValue ReadFromMemory(string absolutePath)
     {
-        if (string.IsNullOrEmpty(absolutePath))
+        var path = new MapPath(absolutePath.AsSpan());
+        var current = _memoryRoot;
+        
+        if (path.IsEmpty) return new MapValue(current);
+
+        while (!path.IsEmpty)
         {
-            return string.Empty;
+            var segment = path.Head;
+            path = path.Tail;
+
+            if (string.IsNullOrEmpty(segment)) continue;
+
+            if (path.IsEmpty) return current[segment];
+
+            if (current.Children == null || !current.Children.TryGetValue(segment, out current)) return Empty.Instance;
         }
 
-        var lastSlashIndex = absolutePath.LastIndexOf('/');
-        if (lastSlashIndex < 0)
-        {
-            return string.Empty;
-        }
-
-        return absolutePath[..lastSlashIndex];
+        return Empty.Instance;
     }
 
     private void CacheResolvedRoute(ReadOnlySpan<char> absolutePath, IReactor reactor)
     {
         if (_cacheLookup.TryGetValue(absolutePath, out _))
-        {
             return;
-        }
 
         _cacheLookup.TryAdd(absolutePath, reactor);
     }
 
-    private static string CombinePathsToString(string baseAbsolutePath, MapPath relativePath)
-    {
-        return string.IsNullOrEmpty(baseAbsolutePath) 
+    private static string CombinePathsToString(string baseAbsolutePath, MapPath relativePath) =>
+        string.IsNullOrEmpty(baseAbsolutePath) 
             ? relativePath.ToString() 
             : new MapPath(baseAbsolutePath.AsSpan()) + relativePath;
+
+    public bool IsEmpty => _memoryRoot.IsEmpty;
+    
+    public bool CanWrite => true;
+
+    public IEnumerable<string> Keys(bool? ascending = null) => _memoryRoot.Keys(ascending);
+
+    public bool ContainsKey(string key) => _memoryRoot.ContainsKey(key);
+
+    public MapValue this[string key]
+    {
+        get => _memoryRoot[key];
+        set => _memoryRoot[key] = value;
     }
 }

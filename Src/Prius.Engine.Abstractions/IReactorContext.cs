@@ -4,11 +4,15 @@ namespace Prius.Engine.Abstractions;
 
 public interface IReactorContext : IMap
 {
+    string AbsolutePath { get; }
+    
+    string CallerSegment { get; }
+    
     string Key { get; }
     
-    void Put(MapPath path, MapValue value, IMap? envPatch = null);
+    bool Put(MapPath path, MapValue value, IMap? envPatch = null);
     
     MapValue Get(MapPath path, IMap? envPatch = null);
     
-    void Notify(MapPath path, MapValue value);
+    void PutAbsolute(MapPath absolutePath, MapValue value);
 }

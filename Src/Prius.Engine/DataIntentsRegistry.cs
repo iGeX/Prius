@@ -29,18 +29,12 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
 
     public void EnterStasis()
     {
-        lock (_sync)
-        {
-            _inStasis = true;
-        }
+        lock (_sync) _inStasis = true;
     }
 
     public void ExitStasis()
     {
-        lock (_sync)
-        {
-            _inStasis = false;
-        }
+        lock (_sync) _inStasis = false;
     }
 
     private CancellationTokenSource? TryRegister()

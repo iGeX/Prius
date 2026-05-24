@@ -32,10 +32,7 @@ public sealed class BinaryManagerTests : IDisposable
         var content = "hello world"u8.ToArray();
         var metadata = DictionaryMap.New.With("Type", "text").AsMapValue();
         
-        using (var stream = new MemoryStream(content))
-        {
-            manager.Store("path/1", metadata, stream);
-        }
+        using (var stream = new MemoryStream(content)) manager.Store("path/1", metadata, stream);
 
         var accessor = manager.Get("path/1");
         Assert.True(accessor.Exists);
@@ -43,9 +40,7 @@ public sealed class BinaryManagerTests : IDisposable
 
         using (var stream = accessor.OpenStream())
         using (var reader = new StreamReader(stream))
-        {
             Assert.Equal("hello world", reader.ReadToEnd());
-        }
     }
 
     [Fact(Timeout = 5000)]
@@ -87,7 +82,7 @@ public sealed class BinaryManagerTests : IDisposable
         manager.ForceSpill();
         var accessor = manager.Get("path/orphan");
         
-        using (var stream = accessor.OpenStream()) { stream.ReadByte(); }
+        using (var stream = accessor.OpenStream()) stream.ReadByte();
 
         var filesOnDisk = Directory.GetFiles(_tempDir);
         
@@ -248,10 +243,7 @@ public sealed class BinaryManagerTests : IDisposable
 
         var spillTask = Task.Run(() =>
         {
-            while (!cts.Token.IsCancellationRequested)
-            {
-                manager.ForceSpill();
-            }
+            while (!cts.Token.IsCancellationRequested) manager.ForceSpill();
         }, TestContext.Current.CancellationToken);
 
         var readTask = Task.Run(() =>

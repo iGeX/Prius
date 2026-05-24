@@ -209,18 +209,12 @@ public readonly struct MapValue : IEquatable<MapValue>, IComparable<MapValue>
         if (typeof(T) == typeof(bool))
         {
             bool b;
-            if (bool.TryParse(span, out var parsed)) 
-            {
+            if (bool.TryParse(span, out var parsed))
                 b = parsed;
-            }
-            else if (span.Length == 0 || span.Equals("false".AsSpan(), StringComparison.OrdinalIgnoreCase) || span.Equals("0".AsSpan(), StringComparison.Ordinal)) 
-            {
+            else if (span.Length == 0 || span.Equals("false".AsSpan(), StringComparison.OrdinalIgnoreCase) || span.Equals("0".AsSpan(), StringComparison.Ordinal))
                 b = false;
-            }
             else
-            {
                 b = true;
-            }
             return Unsafe.As<bool, T>(ref b);
         }
 

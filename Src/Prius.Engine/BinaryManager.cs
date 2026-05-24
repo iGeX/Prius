@@ -1,5 +1,6 @@
 using Prius.Core.Maps;
 using Prius.Engine.Abstractions;
+using System.Collections.Concurrent;
 
 namespace Prius.Engine;
 
@@ -7,17 +8,17 @@ public sealed class BinaryManager : IBinaryManager, IDisposable
 {
     private sealed class Node : IDisposable
     {
-        public readonly SemaphoreSlim Semaphore = new(1, 1);
+        public readonly object SyncRoot = new();
         public MapValue Metadata;
         public byte[]? Data;
         public Guid? TempFileId;
         public DateTime LastAccessed;
+        public bool IsDisposed;
 
-        public void Dispose() => Semaphore.Dispose();
+        public void Dispose() {}
     }
 
-    private readonly Dictionary<string, Node> _nodes = new(StringComparer.Ordinal);
-    private readonly ReaderWriterLockSlim _globalLock = new();
+    private readonly ConcurrentDictionary<string, Node> _nodes = new(StringComparer.Ordinal);
     private readonly string? _tempPath;
     private readonly CancellationTokenSource _cts = new();
     private readonly ITimeProvider _timeProvider;
@@ -41,34 +42,23 @@ public sealed class BinaryManager : IBinaryManager, IDisposable
 
     public void ForceSpill()
     {
-        List<Node> targets;
-        _globalLock.EnterReadLock();
-        try
-        {
-            targets = _nodes.Values.ToList();
-        }
-        finally
-        {
-            _globalLock.ExitReadLock();
-        }
-
-        foreach (var node in targets) 
+        var nodes = _nodes.Values.ToList();
+        foreach (var node in nodes)
             SpillNodeToDisk(node);
     }
 
     private void SpillNodeToDisk(Node node)
     {
-        lock (node)
+        lock (node.SyncRoot)
         {
-            if (node.Data == null || string.IsNullOrEmpty(_tempPath)) return;
+            if (node.IsDisposed || node.Data == null || string.IsNullOrEmpty(_tempPath)) return;
 
             var id = Guid.NewGuid();
             var filePath = Path.Combine(_tempPath, $"{id}.bin");
 
             try
             {
-                using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.Read, 4096, FileOptions.SequentialScan))
-                    fileStream.Write(node.Data, 0, node.Data.Length);
+                using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.SequentialScan)) fileStream.Write(node.Data, 0, node.Data.Length);
 
                 node.TempFileId = id;
                 Interlocked.Add(ref _currentMemory, -node.Data.Length);
@@ -76,9 +66,7 @@ public sealed class BinaryManager : IBinaryManager, IDisposable
             }
             catch
             {
-                if (File.Exists(filePath)) 
-                    TryDeleteFile(filePath);
-                throw;
+                TryDeleteFile(filePath);
             }
         }
     }
@@ -88,7 +76,7 @@ public sealed class BinaryManager : IBinaryManager, IDisposable
         for (var i = 0; i < 3; i++)
         {
             try { if (File.Exists(path)) File.Delete(path); return; }
-            catch { Thread.Sleep(TimeSpan.FromMilliseconds(50 * Math.Pow(2, i))); }
+            catch { Thread.Sleep(10); }
         }
     }
 
@@ -101,19 +89,7 @@ public sealed class BinaryManager : IBinaryManager, IDisposable
                 await Task.Delay(_spillInterval, ct);
 
                 var now = _timeProvider.UtcNow;
-                List<Node> targets;
-
-                _globalLock.EnterReadLock();
-                try
-                {
-                    targets = _nodes.Values
-                        .Where(n => now - n.LastAccessed > _spillInterval && n.Data != null)
-                        .ToList();
-                }
-                finally
-                {
-                    _globalLock.ExitReadLock();
-                }
+                var targets = _nodes.Values.Where(n => n.Data != null && now - n.LastAccessed > _spillInterval).ToList();
 
                 foreach (var node in targets) SpillNodeToDisk(node);
             }
@@ -131,174 +107,118 @@ public sealed class BinaryManager : IBinaryManager, IDisposable
     public void Store(MapPath path, MapValue metadata, Stream stream)
     {
         var key = path.ToString();
-        byte[]? memoryData = null;
-        Guid? diskFileId = null;
+        byte[] data;
         
         using (stream)
         {
             var ms = new MemoryStream();
             stream.CopyTo(ms);
-            var data = ms.ToArray();
-
-            var totalAllocated = Interlocked.Add(ref _currentMemory, data.Length);
-
-            if (totalAllocated <= _maxMemory)
-                memoryData = data;
-            else
-            {
-                Interlocked.Add(ref _currentMemory, -data.Length);
-                
-                if (!string.IsNullOrEmpty(_tempPath))
-                {
-                    diskFileId = Guid.NewGuid();
-                    var filePath = Path.Combine(_tempPath, $"{diskFileId.Value}.bin");
-                    using var fileStream = new FileStream(
-                        filePath, FileMode.Create, FileAccess.Write, FileShare.Read, 4096, FileOptions.SequentialScan);
-                    fileStream.Write(data, 0, data.Length);
-                }
-            }
+            data = ms.ToArray();
         }
 
         var node = new Node
         {
             Metadata = metadata,
-            Data = memoryData,
-            TempFileId = diskFileId,
             LastAccessed = _timeProvider.UtcNow
         };
 
-        Node? oldNode;
+        var totalAllocated = Interlocked.Add(ref _currentMemory, data.Length);
+        if (totalAllocated <= _maxMemory)
+            node.Data = data;
+        else
+        {
+            Interlocked.Add(ref _currentMemory, -data.Length);
+            if (!string.IsNullOrEmpty(_tempPath))
+            {
+                var diskFileId = Guid.NewGuid();
+                var filePath = Path.Combine(_tempPath, $"{diskFileId}.bin");
+                using (var fileStream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.SequentialScan)) fileStream.Write(data, 0, data.Length);
+                node.TempFileId = diskFileId;
+            }
+            else 
+            {
+                node.Data = data;
+                Interlocked.Add(ref _currentMemory, data.Length);
+            }
+        }
 
-        _globalLock.EnterWriteLock();
-        try
+        _nodes.AddOrUpdate(key, node, (_, oldNode) =>
         {
-            _nodes.TryGetValue(key, out oldNode);
-            _nodes[key] = node;
-        }
-        finally
-        {
-            _globalLock.ExitWriteLock();
-        }
+            RemoveNode(oldNode);
+            return node;
+        });
+    }
 
-        if (oldNode == null) 
-            return;
-        lock (oldNode)
+    private void RemoveNode(Node node)
+    {
+        lock (node.SyncRoot)
         {
-            if (oldNode.Data != null) Interlocked.Add(ref _currentMemory, -oldNode.Data.Length);
-            if (oldNode.TempFileId.HasValue && !string.IsNullOrEmpty(_tempPath))
-                TryDeleteFile(Path.Combine(_tempPath, $"{oldNode.TempFileId.Value}.bin"));
+            node.IsDisposed = true;
+            if (node.Data != null)
+            {
+                Interlocked.Add(ref _currentMemory, -node.Data.Length);
+                node.Data = null;
+            }
+            if (node.TempFileId.HasValue && !string.IsNullOrEmpty(_tempPath))
+            {
+                TryDeleteFile(Path.Combine(_tempPath, $"{node.TempFileId.Value}.bin"));
+                node.TempFileId = null;
+            }
         }
-        oldNode.Dispose();
     }
 
     public void Delete(MapPath path)
     {
-        var key = path.ToString();
-        Node? node;
-
-        _globalLock.EnterWriteLock();
-        try
-        {
-            _nodes.Remove(key, out node);
-        }
-        finally
-        {
-            _globalLock.ExitWriteLock();
-        }
-
-        if (node == null) 
-            return;
-        
-        lock (node)
-        {
-            if (node.Data != null) 
-                Interlocked.Add(ref _currentMemory, -node.Data.Length);
-            if (node.TempFileId.HasValue && !string.IsNullOrEmpty(_tempPath))
-                TryDeleteFile(Path.Combine(_tempPath, $"{node.TempFileId.Value}.bin"));
-        }
-        node.Dispose();
+        if (_nodes.TryRemove(path.ToString(), out var node)) RemoveNode(node);
     }
 
     public IBinaryAccessor Get(MapPath path) => new Accessor(this, path.ToString());
 
     private sealed class Accessor(BinaryManager manager, string path) : IBinaryAccessor
     {
-        public MapValue Metadata
-        {
-            get
-            {
-                manager._globalLock.EnterReadLock();
-                try
-                {
-                    return manager._nodes.TryGetValue(path, out var n) ? n.Metadata : Empty.Instance;
-                }
-                finally
-                {
-                    manager._globalLock.ExitReadLock();
-                }
-            }
-        }
+        public MapValue Metadata => manager._nodes.TryGetValue(path, out var n) ? n.Metadata : Empty.Instance;
 
-        public bool Exists
-        {
-            get
-            {
-                manager._globalLock.EnterReadLock();
-                try
-                {
-                    return manager._nodes.ContainsKey(path);
-                }
-                finally
-                {
-                    manager._globalLock.ExitReadLock();
-                }
-            }
-        }
+        public bool Exists => manager._nodes.ContainsKey(path);
 
         public Stream OpenStream()
         {
-            manager._globalLock.EnterReadLock();
-            Node? node;
-            try
-            {
-                node = manager._nodes.GetValueOrDefault(path);
-            }
-            finally
-            {
-                manager._globalLock.ExitReadLock();
-            }
-
-            if (node == null)
+            if (!manager._nodes.TryGetValue(path, out var node))
                 throw new InvalidOperationException("Node not found");
 
-            node.Semaphore.Wait();
-            try
+            lock (node.SyncRoot)
             {
-                lock (node)
-                {
-                    node.LastAccessed = manager._timeProvider.UtcNow;
-                    if (node.Data != null) return new MemoryStream(node.Data);
+                if (node.IsDisposed)
+                    throw new InvalidOperationException("Node is disposed");
 
-                    if (!node.TempFileId.HasValue || string.IsNullOrEmpty(manager._tempPath))
-                        throw new InvalidOperationException("Binary data not available");
-
-                    var filePath = Path.Combine(manager._tempPath, $"{node.TempFileId.Value}.bin");
-                    var data = File.ReadAllBytes(filePath);
-
-                    if (Interlocked.Read(ref manager._currentMemory) + data.Length > manager._maxMemory)
-                        return new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read, 4096, FileOptions.SequentialScan);
-                    
-                    node.Data = data;
-                    TryDeleteFile(filePath);
-                    node.TempFileId = null;
-                    Interlocked.Add(ref manager._currentMemory, data.Length);
+                node.LastAccessed = manager._timeProvider.UtcNow;
+                if (node.Data != null) 
                     return new MemoryStream(node.Data);
 
+                if (!node.TempFileId.HasValue || string.IsNullOrEmpty(manager._tempPath))
+                    throw new InvalidOperationException("Binary data not available");
+
+                var filePath = Path.Combine(manager._tempPath, $"{node.TempFileId.Value}.bin");
+                var fileInfo = new FileInfo(filePath);
+                if (!fileInfo.Exists)
+                    throw new InvalidOperationException("Binary data not available");
+
+                if (Interlocked.Read(ref manager._currentMemory) + fileInfo.Length > manager._maxMemory) return new FileStream(filePath, FileMode.Open, FileAccess.Read, FileShare.Read | FileShare.Delete, 4096, FileOptions.SequentialScan);
+
+                byte[] data;
+                try 
+                {
+                    data = File.ReadAllBytes(filePath);
+                } 
+                catch (Exception) 
+                {
+                    throw new InvalidOperationException("Binary data not available");
                 }
-            }
-            finally
-            {
-                node.Semaphore.Release();
+
+                node.Data = data;
+                TryDeleteFile(filePath);
+                node.TempFileId = null;
+                Interlocked.Add(ref manager._currentMemory, data.Length);
+                return new MemoryStream(node.Data);
             }
         }
     }
@@ -307,18 +227,12 @@ public sealed class BinaryManager : IBinaryManager, IDisposable
     {
         _cts.Cancel();
         _cts.Dispose();
-        _globalLock.Dispose();
         
-        List<Node> nodesToDispose;
-        _globalLock.EnterWriteLock();
-        try
-        {
-            nodesToDispose = _nodes.Values.ToList();
-            _nodes.Clear();
-        }
-        finally { _globalLock.ExitWriteLock(); }
+        var nodes = _nodes.Values.ToList();
+        _nodes.Clear();
 
-        foreach (var node in nodesToDispose) node.Dispose();
+        foreach (var node in nodes) 
+            RemoveNode(node);
 
         if (string.IsNullOrEmpty(_tempPath) || !Directory.Exists(_tempPath)) 
             return;

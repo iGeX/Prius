@@ -350,9 +350,7 @@ public static class RqlBuilder
                 sb.Append($"spatial.distance({field}, spatial.point({circle["Latitude"].AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture)}, {circle["Longitude"].AsValue<decimal>().ToString(System.Globalization.CultureInfo.InvariantCulture)}))");
             }
             else
-            {
                 sb.Append(NormalizePath(fieldKey));
-            }
 
             if (string.Equals(direction, "Desc", StringComparison.OrdinalIgnoreCase))
                 sb.Append(" desc");
@@ -399,10 +397,7 @@ public static class RqlBuilder
 
         if (!reduceMap.IsEmpty)
         {
-            if (groupByMap.IsEmpty)
-            {
-                throw new InvalidOperationException("Map-Reduce aggregations (Reduce) require a GroupBy clause in QueryMap.");
-            }
+            if (groupByMap.IsEmpty) throw new InvalidOperationException("Map-Reduce aggregations (Reduce) require a GroupBy clause in QueryMap.");
 
             var first = true;
             foreach (var key in reduceMap.Keys())

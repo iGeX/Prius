@@ -1,28 +1,16 @@
 using Microsoft.Extensions.Configuration;
-using Prius.Core.Maps;
-using Prius.Engine.Abstractions;
 
 namespace Prius.Engine;
 
-public sealed class BusConfigurationProvider : ConfigurationProvider
+public sealed class BusConfigurationProvider(VirtualBus bus, string basePath = "/Configuration") : ConfigurationProvider
 {
-    private readonly VirtualBus _bus;
-    private readonly string _basePath;
+    private readonly VirtualBus _bus = bus ?? throw new ArgumentNullException(nameof(bus));
 
-    public BusConfigurationProvider(VirtualBus bus, string basePath = "/Configuration")
-    {
-        _bus = bus ?? throw new ArgumentNullException(nameof(bus));
-        _basePath = basePath;
-    }
-
-    public void NotifyConfigurationChanged()
-    {
-        OnReload();
-    }
+    public void NotifyConfigurationChanged() => OnReload();
 
     public override bool TryGet(string key, out string? value)
     {
-        var path = $"{_basePath}/{key.Replace(':', '/')}";
+        var path = $"{basePath}/{key.Replace(':', '/')}";
         var mapValue = _bus.Get(path);
 
         if (mapValue.IsEmpty)
@@ -38,8 +26,8 @@ public sealed class BusConfigurationProvider : ConfigurationProvider
     public override IEnumerable<string> GetChildKeys(IEnumerable<string> earlierKeys, string? parentPath)
     {
         var path = string.IsNullOrEmpty(parentPath) 
-            ? _basePath 
-            : $"{_basePath}/{parentPath.Replace(':', '/')}";
+            ? basePath 
+            : $"{basePath}/{parentPath.Replace(':', '/')}";
 
         var map = _bus.Get(path).AsMap();
         var keys = map.Keys().ToList();

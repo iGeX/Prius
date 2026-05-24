@@ -1,7 +1,6 @@
 namespace Prius.Data.RavenDB.Tests;
 
 using Xunit;
-using System;
 using Core.Maps;
 
 public class RqlBuilderTests

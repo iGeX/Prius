@@ -9,9 +9,7 @@ public sealed class EmptyReactor : IReactor
     
     private EmptyReactor() { }
 
-    public void Put(IReactorContext context, MapPath path, MapValue value) { }
+    public bool Put(IReactorContext context, MapPath path, MapValue value) => false;
 
     public MapValue Get(IReactorContext context, MapPath path) => Empty.Instance;
-    
-    public void Notify(IReactorContext context, MapPath path, MapValue value) { }
 }

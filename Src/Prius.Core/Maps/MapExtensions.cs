@@ -404,10 +404,7 @@ public static class MapExtensions
             for (var i = 0; i < span.Length; i += 2)
             {
                 hash1 = ((hash1 << 5) + hash1) ^ span[i];
-                if (i + 1 < span.Length)
-                {
-                    hash2 = ((hash2 << 5) + hash2) ^ span[i + 1];
-                }
+                if (i + 1 < span.Length) hash2 = ((hash2 << 5) + hash2) ^ span[i + 1];
             }
 
             return hash1 + (hash2 * 1566083941);

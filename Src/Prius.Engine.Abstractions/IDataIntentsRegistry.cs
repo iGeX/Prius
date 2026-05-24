@@ -8,19 +8,19 @@ using Core.Maps;
 
 public interface IDataIntentsRegistry
 {
-    CancellationTokenSource Load(IReactorContext context, string documentId, MapPath successPath, MapPath failurePath);
-    CancellationTokenSource Query(IReactorContext context, IMap queryMap, MapPath successPath, MapPath failurePath);
-    CancellationTokenSource Store(IReactorContext context, IMap document, MapPath successPath, MapPath failurePath);
-    CancellationTokenSource Patch(IReactorContext context, string documentId, string path, MapValue val, MapPath successPath, MapPath failurePath);
-    CancellationTokenSource Delete(IReactorContext context, string documentId, string? vector, MapPath successPath, MapPath failurePath);
-    CancellationTokenSource Increment(IReactorContext context, string documentId, string name, long delta, MapPath successPath, MapPath failurePath);
-    CancellationTokenSource GetCounters(IReactorContext context, string documentId, MapPath successPath, MapPath failurePath);
-    CancellationTokenSource GetAttachmentsMetadata(IReactorContext context, string documentId, MapPath successPath, MapPath failurePath);
-    CancellationTokenSource StoreAttachment(IReactorContext context, string documentId, string name, Stream stream, string contentType, MapPath successPath, MapPath failurePath);
-    CancellationTokenSource GetAttachment(IReactorContext context, string documentId, string name, MapPath successPath, MapPath failurePath);
-    CancellationTokenSource DeleteAttachment(IReactorContext context, string documentId, string name, MapPath successPath, MapPath failurePath);
-    CancellationTokenSource ExecuteNative(IReactorContext context, Func<object, NativeIntent, Task> nativeAction, MapPath successPath, MapPath failurePath);
-    CancellationTokenSource Subscription(IReactorContext context, string topic, string dataPath, MapPath successPath, MapPath failurePath);
+    CancellationTokenSource? Load(IReactorContext context, string documentId, MapPath successPath, MapPath failurePath);
+    CancellationTokenSource? Query(IReactorContext context, IMap queryMap, MapPath successPath, MapPath failurePath);
+    CancellationTokenSource? Store(IReactorContext context, IMap document, MapPath successPath, MapPath failurePath);
+    CancellationTokenSource? Patch(IReactorContext context, string documentId, string path, MapValue val, MapPath successPath, MapPath failurePath);
+    CancellationTokenSource? Delete(IReactorContext context, string documentId, string? vector, MapPath successPath, MapPath failurePath);
+    CancellationTokenSource? Increment(IReactorContext context, string documentId, string name, long delta, MapPath successPath, MapPath failurePath);
+    CancellationTokenSource? GetCounters(IReactorContext context, string documentId, MapPath successPath, MapPath failurePath);
+    CancellationTokenSource? GetAttachmentsMetadata(IReactorContext context, string documentId, MapPath successPath, MapPath failurePath);
+    CancellationTokenSource? StoreAttachment(IReactorContext context, string documentId, string name, Stream stream, string contentType, MapPath successPath, MapPath failurePath);
+    CancellationTokenSource? GetAttachment(IReactorContext context, string documentId, string name, MapPath successPath, MapPath failurePath);
+    CancellationTokenSource? DeleteAttachment(IReactorContext context, string documentId, string name, MapPath successPath, MapPath failurePath);
+    CancellationTokenSource? ExecuteNative(IReactorContext context, Func<object, NativeIntent, Task> nativeAction, MapPath successPath, MapPath failurePath);
+    CancellationTokenSource? Subscription(IReactorContext context, string topic, string dataPath, MapPath successPath, MapPath failurePath);
 }
 
 public record LoadIntent(IReactorContext Context, string DocumentId, string SuccessPath, string FailurePath, CancellationToken Token) : IIntent;

@@ -29,10 +29,7 @@ public sealed class PackageImporterTests
             }
             
             var dll = archive.CreateEntry("lib/net8.0/Test.dll");
-            using (var writer = new StreamWriter(dll.Open()))
-            {
-                writer.Write("binary meat content");
-            }
+            using (var writer = new StreamWriter(dll.Open())) writer.Write("binary meat content");
         }
 
         stream.Position = 0;

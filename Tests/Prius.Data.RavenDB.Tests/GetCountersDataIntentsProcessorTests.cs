@@ -1,5 +1,4 @@
 using Xunit;
-using Prius.Core.Maps;
 using Prius.Engine.Abstractions;
 
 namespace Prius.Data.RavenDB.Tests;

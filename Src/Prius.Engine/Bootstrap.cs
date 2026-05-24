@@ -39,15 +39,9 @@ public sealed class Bootstrap
     {
         try
         {
-            if (_loadedAssemblies.Count > 0)
-            {
-                await Stasis();
-            }
+            if (_loadedAssemblies.Count > 0) await Stasis();
 
-            if (StartupTargets.IsEmpty)
-            {
-                return;
-            }
+            if (StartupTargets.IsEmpty) return;
 
             await _runtime.Prepare();
 
@@ -96,17 +90,11 @@ public sealed class Bootstrap
             services.AddSingleton<IDataIntentsProvider>(registry);
             services.AddSingleton(_bus);
 
-            foreach (var module in _modules)
-            {
-                module.ConfigureServices(services, config);
-            }
+            foreach (var module in _modules) module.ConfigureServices(services, config);
 
             _serviceProvider = services.BuildServiceProvider();
 
-            foreach (var module in _modules)
-            {
-                await ExecuteWithTimeout(ct => module.Activate(_serviceProvider, config, ct), TimeSpan.FromSeconds(30), "Activate");
-            }
+            foreach (var module in _modules) await ExecuteWithTimeout(ct => module.Activate(_serviceProvider, config, ct), TimeSpan.FromSeconds(30), "Activate");
 
             await ExecuteEntry();
         }
@@ -132,10 +120,7 @@ public sealed class Bootstrap
         foreach (var key in map.Keys())
         {
             var val = map[key];
-            if (!val.IsMap)
-            {
-                continue;
-            }
+            if (!val.IsMap) continue;
 
             if (!key.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
             {
@@ -144,26 +129,20 @@ public sealed class Bootstrap
             }
 
             var hash = val["hash"].AsString();
-            if (string.IsNullOrEmpty(hash))
-            {
-                continue;
-            }
+            if (string.IsNullOrEmpty(hash)) continue;
 
             await using var stream = await _repository.OpenStream(hash);
             var assembly = await _runtime.LoadAssembly(stream);
             
             foreach (var type in assembly.GetExportedTypes())
             {
-                if (typeof(IPriusModule).IsAssignableFrom(type) && !type.IsInterface && !type.IsAbstract)
+                if (typeof(IPriusModule).IsAssignableFrom(type) && type is { IsInterface: false, IsAbstract: false })
                 {
                     var module = (IPriusModule)Activator.CreateInstance(type)!;
                     _modules.Add(module);
                     services.AddSingleton(module);
                 }
-                if (typeof(IReactor).IsAssignableFrom(type) && !type.IsInterface && !type.IsAbstract)
-                {
-                    services.AddSingleton(typeof(IReactor), type);
-                }
+                if (typeof(IReactor).IsAssignableFrom(type) && type is { IsInterface: false, IsAbstract: false }) services.AddSingleton(typeof(IReactor), type);
             }
 
             _loadedAssemblies.Add(assembly);
@@ -189,20 +168,11 @@ public sealed class Bootstrap
     
     public async ValueTask Stasis()
     {
-        if (_loadedAssemblies.Count == 0)
-        {
-            return;
-        }
+        if (_loadedAssemblies.Count == 0) return;
 
-        if (_serviceProvider?.GetService<IDataIntentsRegistry>() is DataIntentsRegistry registry)
-        {
-            registry.EnterStasis();
-        }
+        if (_serviceProvider?.GetService<IDataIntentsRegistry>() is DataIntentsRegistry registry) registry.EnterStasis();
 
-        foreach (var module in _modules)
-        {
-            await ExecuteWithTimeout(module.Stasis, TimeSpan.FromSeconds(30), "Stasis");
-        }
+        foreach (var module in _modules) await ExecuteWithTimeout(module.Stasis, TimeSpan.FromSeconds(30), "Stasis");
 
         _modules.Clear();
         _loadedAssemblies.Clear();
@@ -227,19 +197,13 @@ public sealed class Bootstrap
         foreach (var tfmKey in contentFiles.Keys())
         {
             var tfmMap = contentFiles[tfmKey].AsMap();
-            foreach (var specKey in tfmMap.Keys())
-            {
-                plan.With(tfmMap[specKey].AsMap());
-            }
+            foreach (var specKey in tfmMap.Keys()) plan.With(tfmMap[specKey].AsMap());
         }
     }
 
     private async ValueTask ExtractPlan(IMap plan, string subDir)
     {
-        if (plan.IsEmpty)
-        {
-            return;
-        }
+        if (plan.IsEmpty) return;
         await ExtractAssetsRecursive(plan, subDir);
     }
 
@@ -248,10 +212,7 @@ public sealed class Bootstrap
         foreach (var key in map.Keys())
         {
             var val = map[key];
-            if (!val.IsMap)
-            {
-                continue;
-            }
+            if (!val.IsMap) continue;
 
             var currentPath = Path.Combine(relativePath, key);
             var hash = val["hash"].AsString();

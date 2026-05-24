@@ -324,11 +324,8 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             Assert.True(results["Order"].AsMap().IsEmpty, "Order map should be empty for facet queries");
             
             var facets = results["Facets"].AsMap();
-            if (facets.IsEmpty)
-            {
-                Assert.Fail("Facets map is empty. Full results: " + results.Serialize());
-            }
-            
+            if (facets.IsEmpty) Assert.Fail("Facets map is empty. Full results: " + results.Serialize());
+
             Assert.True(facets.ContainsKey("Age"), "Facets should contain 'Age' key");
             var ageFacet = facets["Age"].AsMap();
             var values = ageFacet["Values"].AsMap();
