@@ -21,7 +21,8 @@ foreach (var arg in args)
 
 //TODO: RavenPackageRepository
 IPackageRepository repo = null; //new DirectoryPackageRepository("./packages", new BinaryManager(Path.Combine(Path.GetTempPath(), Path.GetRandomFileName())));
-var bootstrap = new Bootstrap(repo, new NativeBootstrapRuntime()) 
+var metadataRegistry = new JsonMetadataRegistry("routes.json");
+var bootstrap = new Bootstrap(repo, new NativeBootstrapRuntime(), metadataRegistry) 
 { 
     StartupTargets = targets 
 };

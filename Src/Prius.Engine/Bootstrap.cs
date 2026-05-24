@@ -14,39 +14,41 @@ public sealed class Bootstrap
     private readonly TaskCompletionSource _killSignal = new();
     private readonly IPackageRepository _repository;
     private readonly IBootstrapRuntime _runtime;
+    private readonly IMetadataRegistry _metadataRegistry;
     private readonly VirtualBus _bus;
     
     private IServiceProvider? _serviceProvider;
-    private List<IPriusModule> _modules = [];
+    private readonly List<IPriusModule> _modules = [];
 
     public IMap StartupTargets { get; init; } = DictionaryMap.New;
     
-    public Bootstrap(IPackageRepository repository, IBootstrapRuntime runtime)
+    public Bootstrap(IPackageRepository repository, IBootstrapRuntime runtime, IMetadataRegistry metadataRegistry)
     {
-        ArgumentNullException.ThrowIfNull(repository);
-        ArgumentNullException.ThrowIfNull(runtime);
-        
-        _repository = repository;
-        _runtime = runtime;
+        _repository = repository ?? throw new ArgumentNullException(nameof(repository));
+        _runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
+        _metadataRegistry = metadataRegistry ?? throw new ArgumentNullException(nameof(metadataRegistry));
         _bus = new VirtualBus(new RoutingTrie());
 
         _repository.OnTransitionToStasis += Stasis;
         _repository.OnTransitionToActive += Activate;
         _repository.OnTransitionToTerminated += Terminate;
+        
+        _metadataRegistry.OnTransitionToStasis += Stasis;
+        _metadataRegistry.OnTransitionToActive += Activate;
+        _metadataRegistry.OnTransitionToTerminated += Terminate;
     }
 
     public async ValueTask Activate()
     {
         try
         {
-            if (_loadedAssemblies.Count > 0) await Stasis();
+            if (_loadedAssemblies.Count > 0) 
+                await Stasis();
 
-            if (StartupTargets.IsEmpty) return;
+            if (StartupTargets.IsEmpty) 
+                return;
 
             await _runtime.Prepare();
-
-            var trie = new RoutingTrie();
-            _bus.UpdateTrie(trie);
 
             var snapshot = await new PackageResolver(_repository).Resolve(_runtime.Tfm, StartupTargets);
             var order = snapshot["Order"].AsMap();
@@ -74,9 +76,6 @@ public sealed class Bootstrap
             await ExtractPlan(runtimesPlan, "runtimes");
             await ExtractPlan(contentPlan, string.Empty);
 
-            var provider = new BusConfigurationProvider(_bus);
-            trie.AddRoute("/Configuration/**", new ConfigurationReactor(provider));
-
             var config = new ConfigurationBuilder()
                 .Add(new BusConfigurationSource(_bus))
                 .Build();
@@ -90,11 +89,15 @@ public sealed class Bootstrap
             services.AddSingleton<IDataIntentsProvider>(registry);
             services.AddSingleton(_bus);
 
-            foreach (var module in _modules) module.ConfigureServices(services, config);
+            foreach (var module in _modules) 
+                module.ConfigureServices(services, config);
 
             _serviceProvider = services.BuildServiceProvider();
 
-            foreach (var module in _modules) await ExecuteWithTimeout(ct => module.Activate(_serviceProvider, config, ct), TimeSpan.FromSeconds(30), "Activate");
+            _bus.UpdateTrie(await BuildRoutingTrie(CancellationToken.None));
+
+            foreach (var module in _modules) 
+                await ExecuteWithTimeout(ct => module.Activate(_serviceProvider, config, ct), TimeSpan.FromSeconds(30), "Activate");
 
             await ExecuteEntry();
         }
@@ -103,6 +106,47 @@ public sealed class Bootstrap
             Console.WriteLine($"[ACTIVE ERROR] {ex.Message}");
             throw;
         }
+    }
+    
+    private async ValueTask<RoutingTrie> BuildRoutingTrie(CancellationToken ct)
+    {
+        var trie = new RoutingTrie();
+        trie.AddRoute("/Configuration/**", new ConfigurationReactor(new BusConfigurationProvider(_bus)));
+
+        var blueprint = await _metadataRegistry.GetBlueprint(ct);
+        var routesMap = blueprint["Routes"].AsMap();
+
+        if (routesMap.IsEmpty) 
+            return trie;
+
+        foreach (var path in routesMap.Keys())
+        {
+            var routeDef = routesMap[path].AsMap();
+            var typeName = routeDef["Type"].AsString();
+
+            var reactorType = ResolveType(typeName);
+            if (reactorType == null || !typeof(IReactor).IsAssignableFrom(reactorType))
+            {
+                Console.WriteLine($"[WARNING] Reactor type '{typeName}' not found or invalid for route '{path}'");
+                continue;
+            }
+
+            trie.AddRoute(path, (IReactor)ActivatorUtilities.CreateInstance(_serviceProvider!, reactorType), routeDef["Env"].AsMap());
+            Console.WriteLine($"[MOUNT] {path} -> {typeName}");
+        }
+
+        return trie;
+    }
+
+    private Type? ResolveType(string typeName)
+    {
+        foreach (var assembly in _loadedAssemblies)
+        {
+            var type = assembly.GetType(typeName);
+            if (type != null) 
+                return type;
+        }
+        return Type.GetType(typeName);
     }
     
     private async ValueTask LoadLibs(IMap assets, IServiceCollection services)
@@ -120,7 +164,8 @@ public sealed class Bootstrap
         foreach (var key in map.Keys())
         {
             var val = map[key];
-            if (!val.IsMap) continue;
+            if (!val.IsMap) 
+                continue;
 
             if (!key.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
             {
@@ -129,7 +174,8 @@ public sealed class Bootstrap
             }
 
             var hash = val["hash"].AsString();
-            if (string.IsNullOrEmpty(hash)) continue;
+            if (string.IsNullOrEmpty(hash)) 
+                continue;
 
             await using var stream = await _repository.OpenStream(hash);
             var assembly = await _runtime.LoadAssembly(stream);
@@ -142,7 +188,9 @@ public sealed class Bootstrap
                     _modules.Add(module);
                     services.AddSingleton(module);
                 }
-                if (typeof(IReactor).IsAssignableFrom(type) && type is { IsInterface: false, IsAbstract: false }) services.AddSingleton(typeof(IReactor), type);
+                
+                if (typeof(IReactor).IsAssignableFrom(type) && type is { IsInterface: false, IsAbstract: false }) 
+                    services.AddSingleton(typeof(IReactor), type);
             }
 
             _loadedAssemblies.Add(assembly);
@@ -162,17 +210,18 @@ public sealed class Bootstrap
         }
     }
     
-    private async ValueTask ExecuteEntry()
-    {
-    }
+    private ValueTask ExecuteEntry() => ValueTask.CompletedTask;
     
     public async ValueTask Stasis()
     {
-        if (_loadedAssemblies.Count == 0) return;
+        if (_loadedAssemblies.Count == 0) 
+            return;
 
-        if (_serviceProvider?.GetService<IDataIntentsRegistry>() is DataIntentsRegistry registry) registry.EnterStasis();
+        if (_serviceProvider?.GetService<IDataIntentsRegistry>() is DataIntentsRegistry registry) 
+            registry.EnterStasis();
 
-        foreach (var module in _modules) await ExecuteWithTimeout(module.Stasis, TimeSpan.FromSeconds(30), "Stasis");
+        foreach (var module in _modules) 
+            await ExecuteWithTimeout(module.Stasis, TimeSpan.FromSeconds(30), "Stasis");
 
         _modules.Clear();
         _loadedAssemblies.Clear();
@@ -197,13 +246,16 @@ public sealed class Bootstrap
         foreach (var tfmKey in contentFiles.Keys())
         {
             var tfmMap = contentFiles[tfmKey].AsMap();
-            foreach (var specKey in tfmMap.Keys()) plan.With(tfmMap[specKey].AsMap());
+            foreach (var specKey in tfmMap.Keys()) 
+                plan.With(tfmMap[specKey].AsMap());
         }
     }
 
     private async ValueTask ExtractPlan(IMap plan, string subDir)
     {
-        if (plan.IsEmpty) return;
+        if (plan.IsEmpty) 
+            return;
+            
         await ExtractAssetsRecursive(plan, subDir);
     }
 
@@ -212,19 +264,18 @@ public sealed class Bootstrap
         foreach (var key in map.Keys())
         {
             var val = map[key];
-            if (!val.IsMap) continue;
+            if (!val.IsMap) 
+                continue;
 
-            var currentPath = Path.Combine(relativePath, key);
             var hash = val["hash"].AsString();
-
             if (string.IsNullOrEmpty(hash))
             {
-                await ExtractAssetsRecursive(val.AsMap(), currentPath);
+                await ExtractAssetsRecursive(val.AsMap(), Path.Combine(relativePath, key));
                 continue;
             }
 
             await using var stream = await _repository.OpenStream(hash);
-            await _runtime.WriteAsset(currentPath, stream);
+            await _runtime.WriteAsset(Path.Combine(relativePath, key), stream);
         }
     }
 }
