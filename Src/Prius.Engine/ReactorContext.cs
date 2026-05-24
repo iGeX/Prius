@@ -9,6 +9,7 @@ public sealed class ReactorContext : IReactorContext, IMap
 {
     private readonly VirtualBus _bus;
     private readonly IMap? _envPatch;
+    private readonly IMap? _staticEnv;
     
     internal ReactorContext? Parent { get; }
 
@@ -16,7 +17,7 @@ public sealed class ReactorContext : IReactorContext, IMap
     public string CallerSegment { get; }
     public string Key { get; }
     
-    public bool IsEmpty => (_envPatch is null || _envPatch.IsEmpty) && (Parent is null || Parent.IsEmpty);
+    public bool IsEmpty => (_envPatch is null || _envPatch.IsEmpty) && (_staticEnv is null || _staticEnv.IsEmpty) && (Parent is null || Parent.IsEmpty);
     public bool CanWrite => false;
 
     internal ReactorContext(
@@ -25,7 +26,8 @@ public sealed class ReactorContext : IReactorContext, IMap
         string callerSegment, 
         string absolutePath, 
         string key, 
-        IMap? envPatch)
+        IMap? envPatch,
+        IMap? staticEnv)
     {
         _bus = bus;
         Parent = parent;
@@ -33,11 +35,15 @@ public sealed class ReactorContext : IReactorContext, IMap
         AbsolutePath = absolutePath;
         Key = key;
         _envPatch = envPatch is not null && !envPatch.IsEmpty ? envPatch : null;
+        _staticEnv = staticEnv is not null && !staticEnv.IsEmpty ? staticEnv : null;
     }
 
     public bool ContainsKey(string key)
     {
         if (_envPatch is not null && _envPatch.ContainsKey(key))
+            return true;
+            
+        if (_staticEnv is not null && _staticEnv.ContainsKey(key))
             return true;
 
         if (Parent is not null)
@@ -52,6 +58,9 @@ public sealed class ReactorContext : IReactorContext, IMap
         {
             if (_envPatch is not null && _envPatch.ContainsKey(key))
                 return _envPatch[key];
+
+            if (_staticEnv is not null && _staticEnv.ContainsKey(key))
+                return _staticEnv[key];
 
             if (Parent is not null)
                 return Parent[key];
@@ -73,6 +82,12 @@ public sealed class ReactorContext : IReactorContext, IMap
             if (current._envPatch is not null)
             {
                 foreach (var key in current._envPatch.Keys(ascending))
+                    uniqueKeys.Add(key);
+            }
+            
+            if (current._staticEnv is not null)
+            {
+                foreach (var key in current._staticEnv.Keys(ascending))
                     uniqueKeys.Add(key);
             }
 

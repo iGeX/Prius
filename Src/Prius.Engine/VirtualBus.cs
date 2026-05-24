@@ -21,7 +21,7 @@ public sealed class VirtualBus : IMap
     {
         _routingTrie = routingTrie ?? throw new ArgumentNullException(nameof(routingTrie));
         _cacheLookup = _routeCache.GetAlternateLookup<ReadOnlySpan<char>>();
-        _rootContext = new ReactorContext(this, null, string.Empty, string.Empty, string.Empty, DictionaryMap.New);
+        _rootContext = new ReactorContext(this, null, string.Empty, string.Empty, string.Empty, DictionaryMap.New, DictionaryMap.New);
     }
 
     public void UpdateTrie(RoutingTrie trie)
@@ -58,7 +58,7 @@ public sealed class VirtualBus : IMap
             CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Reactor);
 
             var callerSegment = relativePath.Head;
-            var subContext = new ReactorContext(this, caller, callerSegment, absolutePathString, resolveResult.ReactorKey, envPatch);
+            var subContext = new ReactorContext(this, caller, callerSegment, absolutePathString, resolveResult.ReactorKey, envPatch, resolveResult.StaticEnv);
 
             return resolveResult.Reactor.Put(subContext, resolveResult.RemainingPath, value);
         }
@@ -86,7 +86,7 @@ public sealed class VirtualBus : IMap
             CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Reactor);
 
             var callerSegment = relativePath.Head;
-            var subContext = new ReactorContext(this, caller, callerSegment, absolutePathString, resolveResult.ReactorKey, envPatch);
+            var subContext = new ReactorContext(this, caller, callerSegment, absolutePathString, resolveResult.ReactorKey, envPatch, resolveResult.StaticEnv);
 
             return resolveResult.Reactor.Get(subContext, resolveResult.RemainingPath);
         }

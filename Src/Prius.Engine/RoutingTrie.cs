@@ -7,7 +7,7 @@ public sealed class RoutingTrie
 {
     private readonly RoutingNode _root = new();
 
-    public void AddRoute(string pathPattern, IReactor reactor)
+    public void AddRoute(string pathPattern, IReactor reactor, IMap? staticEnv = null)
     {
         if (string.IsNullOrWhiteSpace(pathPattern)) 
             throw new ArgumentNullException(nameof(pathPattern));
@@ -25,9 +25,11 @@ public sealed class RoutingTrie
             {
                 case "**":
                     current.DeepWildcardReactor = reactor;
+                    current.DeepWildcardStaticEnv = staticEnv;
                     return;
                 case "*" when path.IsEmpty:
                     current.WildcardReactor = reactor;
+                    current.WildcardStaticEnv = staticEnv;
                     return;
                 case "*":
                     segment = "@wildcard";
@@ -43,12 +45,14 @@ public sealed class RoutingTrie
         }
 
         current.TerminalReactor = reactor;
+        current.TerminalStaticEnv = staticEnv;
     }
 
     public ResolveResult Resolve(MapPath absolutePath)
     {
         var current = _root;
         IReactor? fallbackReactor = null;
+        IMap? fallbackStaticEnv = null;
         
         var originalPath = absolutePath; 
         var currentDepth = 0;
@@ -61,6 +65,7 @@ public sealed class RoutingTrie
             if (current.DeepWildcardReactor != null)
             {
                 fallbackReactor = current.DeepWildcardReactor;
+                fallbackStaticEnv = current.DeepWildcardStaticEnv;
                 fallbackDepth = currentDepth;
                 fallbackKey = lastMatchedKey;
             }
@@ -83,20 +88,20 @@ public sealed class RoutingTrie
             }
 
             if (fallbackReactor != null)
-                return new ResolveResult(fallbackReactor, SlicePath(originalPath, fallbackDepth), fallbackKey);
+                return new ResolveResult(fallbackReactor, SlicePath(originalPath, fallbackDepth), fallbackKey, fallbackStaticEnv);
 
             if (absolutePath.IsEmpty && current.WildcardReactor != null)
-                return new ResolveResult(current.WildcardReactor, string.Empty, segment);
+                return new ResolveResult(current.WildcardReactor, string.Empty, segment, current.WildcardStaticEnv);
 
-            return new ResolveResult(EmptyReactor.Instance, string.Empty, segment); 
+            return new ResolveResult(EmptyReactor.Instance, string.Empty, segment, null); 
         }
 
         if (current.TerminalReactor != null)
-            return new ResolveResult(current.TerminalReactor, string.Empty, lastMatchedKey);
+            return new ResolveResult(current.TerminalReactor, string.Empty, lastMatchedKey, current.TerminalStaticEnv);
 
         return fallbackReactor != null 
-            ? new ResolveResult(fallbackReactor, SlicePath(originalPath, fallbackDepth), fallbackKey) 
-            : new ResolveResult(EmptyReactor.Instance, string.Empty, lastMatchedKey);
+            ? new ResolveResult(fallbackReactor, SlicePath(originalPath, fallbackDepth), fallbackKey, fallbackStaticEnv) 
+            : new ResolveResult(EmptyReactor.Instance, string.Empty, lastMatchedKey, null);
     }
 
     private static MapPath SlicePath(MapPath path, int segmentsToSkip)
@@ -109,11 +114,13 @@ public sealed class RoutingTrie
     }
 }
 
-public readonly ref struct ResolveResult(IReactor reactor, MapPath remainingPath, string reactorKey)
+public readonly ref struct ResolveResult(IReactor reactor, MapPath remainingPath, string reactorKey, IMap? staticEnv)
 {
     public IReactor Reactor { get; } = reactor;
     
     public MapPath RemainingPath { get; } = remainingPath;
     
     public string ReactorKey { get; } = reactorKey;
+
+    public IMap? StaticEnv { get; } = staticEnv;
 }
