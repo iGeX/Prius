@@ -20,7 +20,7 @@ public class GetCountersDataIntentsProcessorTests : AbstractDataIntentsProcessor
             await session.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             GetCounters = [new GetCountersIntent(context, DocId, "output/counters", "failures/1", TestContext.Current.CancellationToken)]
@@ -48,7 +48,7 @@ public class GetCountersDataIntentsProcessorTests : AbstractDataIntentsProcessor
             await session.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             GetCounters = [new GetCountersIntent(context, DocId, "output/counters", "failures/1", TestContext.Current.CancellationToken)]

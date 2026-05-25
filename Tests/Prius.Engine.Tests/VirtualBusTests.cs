@@ -8,10 +8,10 @@ using Abstractions;
 public sealed class VirtualBusTests
 {
     [Fact]
-    public void Put_ShouldResolveReactorWithRemainingPathAndKey()
+    public void Put_ShouldResolveElementWithRemainingPathAndKey()
     {
         var trie = new RoutingTrie();
-        var spy = new SpyReactor();
+        var spy = new SpyElement();
         trie.AddRoute("orders/**", spy);
         var bus = new VirtualBus(trie);
 
@@ -26,7 +26,7 @@ public sealed class VirtualBusTests
     public void Context_ShouldCascadinglyProbeHierarchicalEnvAndShadowValues()
     {
         var trie = new RoutingTrie();
-        var spy = new SpyReactor();
+        var spy = new SpyElement();
         trie.AddRoute("orders/123/items/1", spy);
 
         var rootEnv = JsonReaderMap.From("""
@@ -43,9 +43,9 @@ public sealed class VirtualBusTests
             }
             """);
 
-        var intermediateReactor = new CascadeRouterReactor("items/1", level1Patch);
+        var intermediateElement = new CascadeRouterElement("items/1", level1Patch);
         var trieWithCascade = new RoutingTrie();
-        trieWithCascade.AddRoute("orders/123", intermediateReactor);
+        trieWithCascade.AddRoute("orders/123", intermediateElement);
         trieWithCascade.AddRoute("orders/123/items/1", spy);
 
         var cascadeBus = new VirtualBus(trieWithCascade);
@@ -64,7 +64,7 @@ public sealed class VirtualBusTests
     public void Context_ShouldSilentlyIgnoreWriteAttempts()
     {
         var trie = new RoutingTrie();
-        var spy = new MaliciousReactor();
+        var spy = new MaliciousElement();
         trie.AddRoute("secure/node", spy);
         var bus = new VirtualBus(trie);
 
@@ -86,28 +86,28 @@ public sealed class VirtualBusTests
     }
     
     [Fact]
-    public void Put_ShouldReturnTrueWhenInterceptedByReactor()
+    public void Put_ShouldReturnTrueWhenInterceptedByElement()
     {
         var trie = new RoutingTrie();
-        var spy = new SpyReactor();
+        var spy = new SpyElement();
         trie.AddRoute("data/**", spy);
         var bus = new VirtualBus(trie);
 
         var result = bus.Put("data/value", "test_value".AsMapValue());
 
-        Assert.True(result); // Hit reactor
+        Assert.True(result); // Hit element
     }
 
     [Fact]
     public void PutAbsolute_ShouldExecuteTopDownInBackground()
     {
         var trie = new RoutingTrie();
-        var spy = new SpyReactor();
+        var spy = new SpyElement();
         trie.AddRoute("events/occurred", spy);
         var bus = new VirtualBus(trie);
 
-        var eventReactor = new AsyncEventReactor();
-        trie.AddRoute("trigger", eventReactor);
+        var eventElement = new AsyncEventElement();
+        trie.AddRoute("trigger", eventElement);
         
         bus.UpdateTrie(trie);
 
@@ -120,14 +120,14 @@ public sealed class VirtualBusTests
     }
 }
 
-public sealed class SpyReactor : IReactor
+public sealed class SpyElement : IElement
 {
     public string LastRemainingPath { get; private set; } = string.Empty;
     public string LastContextKey { get; private set; } = string.Empty;
-    public IReactorContext? LastContext { get; private set; }
+    public IElementContext? LastContext { get; private set; }
     public bool WasExecuted { get; private set; }
 
-    public bool Put(IReactorContext context, MapPath path, MapValue value)
+    public bool Put(IElementContext context, MapPath path, MapValue value)
     {
         LastRemainingPath = path;
         LastContextKey = context.Key;
@@ -136,36 +136,36 @@ public sealed class SpyReactor : IReactor
         return true;
     }
 
-    public MapValue Get(IReactorContext context, MapPath path) =>
+    public MapValue Get(IElementContext context, MapPath path) =>
         new();
 }
 
-public sealed class AsyncEventReactor : IReactor
+public sealed class AsyncEventElement : IElement
 {
-    public bool Put(IReactorContext context, MapPath path, MapValue value)
+    public bool Put(IElementContext context, MapPath path, MapValue value)
     {
         context.PutAbsolute("events/occurred", new MapValue());
         return true;
     }
 
-    public MapValue Get(IReactorContext context, MapPath path) =>
+    public MapValue Get(IElementContext context, MapPath path) =>
         new();
 }
 
-public sealed class CascadeRouterReactor(string deeperPath, IMap patch) : IReactor
+public sealed class CascadeRouterElement(string deeperPath, IMap patch) : IElement
 {
-    public bool Put(IReactorContext context, MapPath path, MapValue value) =>
+    public bool Put(IElementContext context, MapPath path, MapValue value) =>
         context.Put(deeperPath, value, patch);
 
-    public MapValue Get(IReactorContext context, MapPath path) =>
+    public MapValue Get(IElementContext context, MapPath path) =>
         new();
 }
 
-public sealed class MaliciousReactor : IReactor
+public sealed class MaliciousElement : IElement
 {
     public bool WasWriteSuccessful { get; private set; }
 
-    public bool Put(IReactorContext context, MapPath path, MapValue value)
+    public bool Put(IElementContext context, MapPath path, MapValue value)
     {
         context["secret_key"] = "hacked".AsMapValue();
 
@@ -175,6 +175,6 @@ public sealed class MaliciousReactor : IReactor
         return true;
     }
 
-    public MapValue Get(IReactorContext context, MapPath path) =>
+    public MapValue Get(IElementContext context, MapPath path) =>
         new();
 }

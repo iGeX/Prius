@@ -60,7 +60,7 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
     public async ValueTask<NativeIntent> PopNative(CancellationToken ct) => await _natives.Reader.ReadAsync(ct);
     public async ValueTask<SubscriptionIntent> PopSubscription(CancellationToken ct) => await _subscriptions.Reader.ReadAsync(ct);
 
-    public CancellationTokenSource? Load(IReactorContext context, string documentId, MapPath successPath, MapPath failurePath)
+    public CancellationTokenSource? Load(IElementContext context, string documentId, MapPath successPath, MapPath failurePath)
     {
         var cts = TryRegister();
         if (cts == null) return null;
@@ -68,7 +68,7 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
         return cts;
     }
 
-    public CancellationTokenSource? Query(IReactorContext context, IMap queryMap, MapPath successPath, MapPath failurePath)
+    public CancellationTokenSource? Query(IElementContext context, IMap queryMap, MapPath successPath, MapPath failurePath)
     {
         var cts = TryRegister();
         if (cts == null) return null;
@@ -76,7 +76,7 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
         return cts;
     }
 
-    public CancellationTokenSource? Store(IReactorContext context, IMap map, MapPath successPath, MapPath failurePath)
+    public CancellationTokenSource? Store(IElementContext context, IMap map, MapPath successPath, MapPath failurePath)
     {
         var cts = TryRegister();
         if (cts == null) return null;
@@ -84,7 +84,7 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
         return cts;
     }
 
-    public CancellationTokenSource? Patch(IReactorContext context, string documentId, string path, MapValue val, MapPath successPath, MapPath failurePath)
+    public CancellationTokenSource? Patch(IElementContext context, string documentId, string path, MapValue val, MapPath successPath, MapPath failurePath)
     {
         var cts = TryRegister();
         if (cts == null) return null;
@@ -92,7 +92,7 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
         return cts;
     }
 
-    public CancellationTokenSource? Delete(IReactorContext context, string documentId, string? vector, MapPath successPath, MapPath failurePath)
+    public CancellationTokenSource? Delete(IElementContext context, string documentId, string? vector, MapPath successPath, MapPath failurePath)
     {
         var cts = TryRegister();
         if (cts == null) return null;
@@ -100,7 +100,7 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
         return cts;
     }
 
-    public CancellationTokenSource? Increment(IReactorContext context, string documentId, string name, long delta, MapPath successPath, MapPath failurePath)
+    public CancellationTokenSource? Increment(IElementContext context, string documentId, string name, long delta, MapPath successPath, MapPath failurePath)
     {
         var cts = TryRegister();
         if (cts == null) return null;
@@ -108,7 +108,7 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
         return cts;
     }
 
-    public CancellationTokenSource? GetCounters(IReactorContext context, string documentId, MapPath successPath, MapPath failurePath)
+    public CancellationTokenSource? GetCounters(IElementContext context, string documentId, MapPath successPath, MapPath failurePath)
     {
         var cts = TryRegister();
         if (cts == null) return null;
@@ -116,7 +116,7 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
         return cts;
     }
 
-    public CancellationTokenSource? GetAttachmentsMetadata(IReactorContext context, string documentId, MapPath successPath, MapPath failurePath)
+    public CancellationTokenSource? GetAttachmentsMetadata(IElementContext context, string documentId, MapPath successPath, MapPath failurePath)
     {
         var cts = TryRegister();
         if (cts == null) return null;
@@ -124,7 +124,7 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
         return cts;
     }
 
-    public CancellationTokenSource? StoreAttachment(IReactorContext context, string documentId, string name, Stream stream, string contentType, MapPath successPath, MapPath failurePath)
+    public CancellationTokenSource? StoreAttachment(IElementContext context, string documentId, string name, Stream stream, string contentType, MapPath successPath, MapPath failurePath)
     {
         var cts = TryRegister();
         if (cts == null) return null;
@@ -132,7 +132,7 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
         return cts;
     }
 
-    public CancellationTokenSource? GetAttachment(IReactorContext context, string documentId, string name, MapPath successPath, MapPath failurePath)
+    public CancellationTokenSource? GetAttachment(IElementContext context, string documentId, string name, MapPath successPath, MapPath failurePath)
     {
         var cts = TryRegister();
         if (cts == null) return null;
@@ -140,7 +140,7 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
         return cts;
     }
 
-    public CancellationTokenSource? DeleteAttachment(IReactorContext context, string documentId, string name, MapPath successPath, MapPath failurePath)
+    public CancellationTokenSource? DeleteAttachment(IElementContext context, string documentId, string name, MapPath successPath, MapPath failurePath)
     {
         var cts = TryRegister();
         if (cts == null) return null;
@@ -148,7 +148,7 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
         return cts;
     }
 
-    public CancellationTokenSource? ExecuteNative(IReactorContext context, Func<object, NativeIntent, Task> nativeAction, MapPath successPath, MapPath failurePath)
+    public CancellationTokenSource? ExecuteNative(IElementContext context, Func<object, NativeIntent, Task> nativeAction, MapPath successPath, MapPath failurePath)
     {
         var cts = TryRegister();
         if (cts == null) return null;
@@ -156,7 +156,7 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
         return cts;
     }
 
-    public CancellationTokenSource? Subscription(IReactorContext context, string topic, string dataPath, MapPath successPath, MapPath failurePath)
+    public CancellationTokenSource? Subscription(IElementContext context, string topic, string dataPath, MapPath successPath, MapPath failurePath)
     {
         var cts = TryRegister();
         if (cts == null) return null;

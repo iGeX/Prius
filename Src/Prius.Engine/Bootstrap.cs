@@ -111,7 +111,7 @@ public sealed class Bootstrap
     private async ValueTask<RoutingTrie> BuildRoutingTrie(CancellationToken ct)
     {
         var trie = new RoutingTrie();
-        trie.AddRoute("/Configuration/**", new ConfigurationReactor(new BusConfigurationProvider(_bus)));
+        trie.AddRoute("/Configuration/**", new ConfigurationElement(new BusConfigurationProvider(_bus)));
 
         var blueprint = await _metadataRegistry.GetBlueprint(ct);
         var routesMap = blueprint["Routes"].AsMap();
@@ -124,14 +124,14 @@ public sealed class Bootstrap
             var routeDef = routesMap[path].AsMap();
             var typeName = routeDef["Type"].AsString();
 
-            var reactorType = ResolveType(typeName);
-            if (reactorType == null || !typeof(IReactor).IsAssignableFrom(reactorType))
+            var elementType = ResolveType(typeName);
+            if (elementType == null || !typeof(IElement).IsAssignableFrom(elementType))
             {
-                Console.WriteLine($"[WARNING] Reactor type '{typeName}' not found or invalid for route '{path}'");
+                Console.WriteLine($"[WARNING] Element type '{typeName}' not found or invalid for route '{path}'");
                 continue;
             }
 
-            trie.AddRoute(path, (IReactor)ActivatorUtilities.CreateInstance(_serviceProvider!, reactorType), routeDef["Env"].AsMap());
+            trie.AddRoute(path, (IElement)ActivatorUtilities.CreateInstance(_serviceProvider!, elementType), routeDef["Env"].AsMap());
             Console.WriteLine($"[MOUNT] {path} -> {typeName}");
         }
 
@@ -189,8 +189,8 @@ public sealed class Bootstrap
                     services.AddSingleton(module);
                 }
                 
-                if (typeof(IReactor).IsAssignableFrom(type) && type is { IsInterface: false, IsAbstract: false }) 
-                    services.AddSingleton(typeof(IReactor), type);
+                if (typeof(IElement).IsAssignableFrom(type) && type is { IsInterface: false, IsAbstract: false }) 
+                    services.AddSingleton(typeof(IElement), type);
             }
 
             _loadedAssemblies.Add(assembly);

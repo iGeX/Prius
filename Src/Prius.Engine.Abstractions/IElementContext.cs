@@ -2,7 +2,7 @@ using Prius.Core.Maps;
 
 namespace Prius.Engine.Abstractions;
 
-public interface IReactorContext : IMap
+public interface IElementContext : IMap
 {
     string AbsolutePath { get; }
     

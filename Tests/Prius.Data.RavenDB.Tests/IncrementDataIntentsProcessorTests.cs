@@ -20,7 +20,7 @@ public class IncrementDataIntentsProcessorTests : AbstractDataIntentsProcessorTe
             await session.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             Increments = [new IncrementIntent(context, DocId, CounterName, 5, "success/1", "failures/1", TestContext.Current.CancellationToken)]
@@ -51,7 +51,7 @@ public class IncrementDataIntentsProcessorTests : AbstractDataIntentsProcessorTe
             await session.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
         
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             Increments = [

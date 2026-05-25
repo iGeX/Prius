@@ -18,7 +18,7 @@ public class LoadDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             await session.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             Loads = [new LoadIntent(context, DocId, "output/user", "failures/1", TestContext.Current.CancellationToken)]
@@ -50,7 +50,7 @@ public class LoadDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             await session.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             Loads = [new LoadIntent(context, DocId, "output/user", "failures/1", TestContext.Current.CancellationToken)]
@@ -72,7 +72,7 @@ public class LoadDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
     {
         const string DocId = "nonexistent/1";
         
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             Loads = [new LoadIntent(context, DocId, "output/user", "failures/1", TestContext.Current.CancellationToken)]

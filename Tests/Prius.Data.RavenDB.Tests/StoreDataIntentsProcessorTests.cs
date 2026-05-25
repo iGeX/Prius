@@ -13,7 +13,7 @@ public class StoreDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         const string DocId = "users/1";
         const string Collection = "users";
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             Stores = [new StoreIntent(context, JsonReaderMap.From($$"""
@@ -74,7 +74,7 @@ public class StoreDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         metadata = session.Advanced.GetMetadataFor(emptyObj);
         var existingVector = metadata["@change-vector"]?.ToString() ?? string.Empty;
         
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             Stores = [
@@ -115,7 +115,7 @@ public class StoreDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         const string DocId = "docs/1";
         
         var now = DateTime.UtcNow;
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             Stores = [new StoreIntent(context, JsonReaderMap.From($$"""
@@ -146,7 +146,7 @@ public class StoreDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         const string DocId = "docs/ttl";
         
         var expires = DateTime.UtcNow.AddMinutes(5);
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             Stores = [new StoreIntent(context, JsonReaderMap.From($$"""
@@ -175,7 +175,7 @@ public class StoreDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
     public async Task Should_Dispose_Stream_After_StoreAttachment()
     {
         const string DocId = "docs/with-binary";
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         
         var spyStream = new SpyMemoryStream("binary content"u8.ToArray());
         var provider = new MockDataIntentsProvider

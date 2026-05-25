@@ -9,19 +9,19 @@ using Abstractions;
 
 public sealed class VirtualBus : IMap
 {
-    private readonly ConcurrentDictionary<string, IReactor> _routeCache = new(StringComparer.Ordinal);
-    private readonly ConcurrentDictionary<string, IReactor>.AlternateLookup<ReadOnlySpan<char>> _cacheLookup;
+    private readonly ConcurrentDictionary<string, IElement> _routeCache = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, IElement>.AlternateLookup<ReadOnlySpan<char>> _cacheLookup;
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _nodeLocks = new(StringComparer.Ordinal);
     
     private RoutingTrie _routingTrie;
-    private readonly ReactorContext _rootContext;
+    private readonly ElementContext _rootContext;
     private readonly BusMemoryNode _memoryRoot = new();
 
     public VirtualBus(RoutingTrie routingTrie)
     {
         _routingTrie = routingTrie ?? throw new ArgumentNullException(nameof(routingTrie));
         _cacheLookup = _routeCache.GetAlternateLookup<ReadOnlySpan<char>>();
-        _rootContext = new ReactorContext(this, null, string.Empty, string.Empty, string.Empty, DictionaryMap.New, DictionaryMap.New);
+        _rootContext = new ElementContext(this, null, string.Empty, string.Empty, string.Empty, DictionaryMap.New, DictionaryMap.New);
     }
 
     public void UpdateTrie(RoutingTrie trie)
@@ -36,7 +36,7 @@ public sealed class VirtualBus : IMap
 
     public void ClearCache() => _routeCache.Clear();
 
-    internal bool DispatchPut(ReactorContext caller, MapPath relativePath, MapValue value, IMap? envPatch)
+    internal bool DispatchPut(ElementContext caller, MapPath relativePath, MapValue value, IMap? envPatch)
     {
         if (relativePath.IsEmpty)
             return false;
@@ -49,18 +49,18 @@ public sealed class VirtualBus : IMap
         {
             var resolveResult = _routingTrie.Resolve(new MapPath(absolutePathString.AsSpan()));
             
-            if (resolveResult.Reactor is EmptyReactor)
+            if (resolveResult.Element is EmptyElement)
             {
                 WriteToMemory(absolutePathString, value);
                 return false;
             }
 
-            CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Reactor);
+            CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Element);
 
             var callerSegment = relativePath.Head;
-            var subContext = new ReactorContext(this, caller, callerSegment, absolutePathString, resolveResult.ReactorKey, envPatch, resolveResult.StaticEnv);
+            var subContext = new ElementContext(this, caller, callerSegment, absolutePathString, resolveResult.ElementKey, envPatch, resolveResult.StaticEnv);
 
-            return resolveResult.Reactor.Put(subContext, resolveResult.RemainingPath, value);
+            return resolveResult.Element.Put(subContext, resolveResult.RemainingPath, value);
         }
         finally
         {
@@ -68,7 +68,7 @@ public sealed class VirtualBus : IMap
         }
     }
 
-    internal MapValue DispatchGet(ReactorContext caller, MapPath relativePath, IMap? envPatch)
+    internal MapValue DispatchGet(ElementContext caller, MapPath relativePath, IMap? envPatch)
     {
         if (relativePath.IsEmpty)
             return new MapValue();
@@ -81,14 +81,14 @@ public sealed class VirtualBus : IMap
         {
             var resolveResult = _routingTrie.Resolve(new MapPath(absolutePathString.AsSpan()));
             
-            if (resolveResult.Reactor is EmptyReactor) return ReadFromMemory(absolutePathString);
+            if (resolveResult.Element is EmptyElement) return ReadFromMemory(absolutePathString);
 
-            CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Reactor);
+            CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Element);
 
             var callerSegment = relativePath.Head;
-            var subContext = new ReactorContext(this, caller, callerSegment, absolutePathString, resolveResult.ReactorKey, envPatch, resolveResult.StaticEnv);
+            var subContext = new ElementContext(this, caller, callerSegment, absolutePathString, resolveResult.ElementKey, envPatch, resolveResult.StaticEnv);
 
-            return resolveResult.Reactor.Get(subContext, resolveResult.RemainingPath);
+            return resolveResult.Element.Get(subContext, resolveResult.RemainingPath);
         }
         finally
         {
@@ -167,12 +167,12 @@ public sealed class VirtualBus : IMap
         return Empty.Instance;
     }
 
-    private void CacheResolvedRoute(ReadOnlySpan<char> absolutePath, IReactor reactor)
+    private void CacheResolvedRoute(ReadOnlySpan<char> absolutePath, IElement element)
     {
         if (_cacheLookup.TryGetValue(absolutePath, out _))
             return;
 
-        _cacheLookup.TryAdd(absolutePath, reactor);
+        _cacheLookup.TryAdd(absolutePath, element);
     }
 
     private static string CombinePathsToString(string baseAbsolutePath, MapPath relativePath) =>

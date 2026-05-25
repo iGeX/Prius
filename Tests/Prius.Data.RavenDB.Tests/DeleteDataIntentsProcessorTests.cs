@@ -18,7 +18,7 @@ public class DeleteDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             await session.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             Deletes = [new DeleteIntent(context, DocId, null, "success/1", "failures/1", TestContext.Current.CancellationToken)]
@@ -50,7 +50,7 @@ public class DeleteDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             changeVector = metadata["@change-vector"]?.ToString() ?? string.Empty;
         }
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             Deletes = [new DeleteIntent(context, DocId, changeVector, "success/1", "failures/1", TestContext.Current.CancellationToken)]
@@ -78,7 +78,7 @@ public class DeleteDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             await session.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             Deletes = [new DeleteIntent(context, DocId, "invalid-vector", "success/1", "failures/1", TestContext.Current.CancellationToken)]

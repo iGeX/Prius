@@ -20,7 +20,7 @@ public class StoreAttachmentDataIntentsProcessorTests : AbstractDataIntentsProce
             await session.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             StoreAttachments = [new StoreAttachmentIntent(context, DocId, AttachmentName, new MemoryStream(content), "image/png", "success/1", "failures/1", TestContext.Current.CancellationToken)]

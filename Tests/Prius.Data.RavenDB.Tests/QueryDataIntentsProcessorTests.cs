@@ -92,7 +92,7 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
 
         WaitForIndexing(store);
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var queryMap = JsonReaderMap.From("""
             {
                 "From": "Users/ByAge",
@@ -137,7 +137,7 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
 
         WaitForIndexing(store);
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var queryMap = JsonReaderMap.From("""
             {
                 "From": "Users/ByAge",
@@ -173,7 +173,7 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         using var store = GetDocumentStore();
         await new Users_ByAge().ExecuteAsync(store, token: TestContext.Current.CancellationToken);
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var queryMap = JsonReaderMap.From("""
             {
                 "From": "Users/ByAge",
@@ -212,7 +212,7 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
 
         WaitForIndexing(store);
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var queryMap = JsonReaderMap.From("""
             {
                 "From": "Users/ByAge",
@@ -260,7 +260,7 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
 
         WaitForIndexing(store);
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var queryMap = JsonReaderMap.From("""
             {
                 "From": "Users/ByAge",
@@ -300,7 +300,7 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
 
         WaitForIndexing(store);
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var queryMap = JsonReaderMap.From("""
             {
                 "From": "Users/ByAge",
@@ -342,7 +342,7 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
         // Arrange
         using var store = GetDocumentStore();
         
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         
         var invalidQueryMap = JsonReaderMap.From("""
             {
@@ -382,7 +382,7 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
 
         WaitForIndexing(store);
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var queryMap = JsonReaderMap.From("""
             {
                 "From": "Users/ByNotes",
@@ -444,7 +444,7 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
 
         WaitForIndexing(store);
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var queryMap = JsonReaderMap.From("""
             {
                 "From": "Orders/ByTotal",
@@ -513,7 +513,7 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
 
         WaitForIndexing(store);
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var queryMap = JsonReaderMap.From("""
             {
                 "From": "Sales/ByProduct",
@@ -567,7 +567,7 @@ public class QueryDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
 
         WaitForIndexing(store);
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var queryMap = JsonReaderMap.From("""
             {
                 "From": "Stores/ByLocation",

@@ -26,7 +26,7 @@ public class GetAttachmentsDataIntentsProcessorTests : AbstractDataIntentsProces
             await session.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             GetAttachments = [new GetAttachmentIntent(context, DocId, AttachmentName, "cache/binary/output", "failures", TestContext.Current.CancellationToken)]

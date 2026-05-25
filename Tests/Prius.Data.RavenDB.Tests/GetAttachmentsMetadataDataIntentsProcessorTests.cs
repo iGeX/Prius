@@ -20,7 +20,7 @@ public class GetAttachmentsMetadataDataIntentsProcessorTests : AbstractDataInten
             await session.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             GetAttachmentsMetadata = [new GetAttachmentsMetadataIntent(context, DocId, "output/metadata", "failures/1", TestContext.Current.CancellationToken)]
@@ -57,7 +57,7 @@ public class GetAttachmentsMetadataDataIntentsProcessorTests : AbstractDataInten
             await session.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             GetAttachmentsMetadata = [new GetAttachmentsMetadataIntent(context, DocId, "output/metadata", "failures/1", TestContext.Current.CancellationToken)]

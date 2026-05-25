@@ -18,7 +18,7 @@ public class PatchDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             await session.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             Patches = [new PatchIntent(context, DocId, "Age", 31L, "success/1", "failures/1", TestContext.Current.CancellationToken)]
@@ -50,7 +50,7 @@ public class PatchDataIntentsProcessorTests : AbstractDataIntentsProcessorTests
             await session.SaveChangesAsync(TestContext.Current.CancellationToken);
         }
 
-        var context = new MockReactorContext();
+        var context = new MockElementContext();
         var provider = new MockDataIntentsProvider
         {
             Patches = [new PatchIntent(context, DocId, "Address/City", "Saint-Petersburg", "success/1", "failures/1", TestContext.Current.CancellationToken)]

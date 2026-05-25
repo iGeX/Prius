@@ -5,13 +5,13 @@ using System.Collections.Generic;
 using Core.Maps;
 using Abstractions;
 
-public sealed class ReactorContext : IReactorContext, IMap
+public sealed class ElementContext : IElementContext, IMap
 {
     private readonly VirtualBus _bus;
     private readonly IMap? _envPatch;
     private readonly IMap? _staticEnv;
     
-    internal ReactorContext? Parent { get; }
+    internal ElementContext? Parent { get; }
 
     public string AbsolutePath { get; }
     public string CallerSegment { get; }
@@ -20,9 +20,9 @@ public sealed class ReactorContext : IReactorContext, IMap
     public bool IsEmpty => (_envPatch is null || _envPatch.IsEmpty) && (_staticEnv is null || _staticEnv.IsEmpty) && (Parent is null || Parent.IsEmpty);
     public bool CanWrite => false;
 
-    internal ReactorContext(
+    internal ElementContext(
         VirtualBus bus, 
-        ReactorContext? parent, 
+        ElementContext? parent, 
         string callerSegment, 
         string absolutePath, 
         string key, 
