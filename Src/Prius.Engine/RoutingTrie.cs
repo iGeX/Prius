@@ -87,11 +87,11 @@ public sealed class RoutingTrie
                 continue;
             }
 
-            if (fallbackElement != null)
-                return new ResolveResult(fallbackElement, SlicePath(originalPath, fallbackDepth), fallbackKey, fallbackStaticEnv);
-
             if (absolutePath.IsEmpty && current.WildcardElement != null)
                 return new ResolveResult(current.WildcardElement, string.Empty, segment, current.WildcardStaticEnv);
+
+            if (fallbackElement != null)
+                return new ResolveResult(fallbackElement, SlicePath(originalPath, fallbackDepth), fallbackKey, fallbackStaticEnv);
 
             return new ResolveResult(EmptyElement.Instance, string.Empty, segment, null); 
         }
