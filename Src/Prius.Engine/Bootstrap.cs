@@ -16,6 +16,7 @@ public sealed class Bootstrap
     private readonly IBootstrapRuntime _runtime;
     private readonly IMetadataRegistry _metadataRegistry;
     private readonly VirtualBus _bus;
+    private readonly SemaphoreSlim _gate = new(1, 1);
     
     private IServiceProvider? _serviceProvider;
     private readonly List<IPriusModule> _modules = [];
@@ -34,16 +35,17 @@ public sealed class Bootstrap
         _repository.OnTransitionToTerminated += Terminate;
         
         _metadataRegistry.OnTransitionToStasis += Stasis;
-        _metadataRegistry.OnTransitionToActive += Activate;
+        _metadataRegistry.OnTransitionToActive += Refresh;
         _metadataRegistry.OnTransitionToTerminated += Terminate;
     }
 
     public async ValueTask Activate()
     {
+        await _gate.WaitAsync();
         try
         {
             if (_loadedAssemblies.Count > 0) 
-                await Stasis();
+                await DoStasis();
 
             if (StartupTargets.IsEmpty) 
                 return;
@@ -103,8 +105,38 @@ public sealed class Bootstrap
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[ACTIVE ERROR] {ex.Message}");
+            Console.WriteLine($"[BOOT ERROR] {ex.Message}");
             throw;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async ValueTask Refresh()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (_serviceProvider == null)
+            {
+                _gate.Release();
+                await Activate();
+                return;
+            }
+
+            Console.WriteLine("[SYSTEM] Refreshing blueprint...");
+            _bus.UpdateTrie(await BuildRoutingTrie(CancellationToken.None));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[REFRESH ERROR] {ex.Message}");
+        }
+        finally
+        {
+            if (_gate.CurrentCount == 0)
+                _gate.Release();
         }
     }
     
@@ -113,27 +145,7 @@ public sealed class Bootstrap
         var trie = new RoutingTrie();
         trie.AddRoute("/Configuration/**", new ConfigurationElement(new BusConfigurationProvider(_bus)));
 
-        var blueprint = await _metadataRegistry.GetBlueprint(ct);
-        var routesMap = blueprint["Routes"].AsMap();
-
-        if (routesMap.IsEmpty) 
-            return trie;
-
-        foreach (var path in routesMap.Keys())
-        {
-            var routeDef = routesMap[path].AsMap();
-            var typeName = routeDef["Type"].AsString();
-
-            var elementType = ResolveType(typeName);
-            if (elementType == null || !typeof(IElement).IsAssignableFrom(elementType))
-            {
-                Console.WriteLine($"[WARNING] Element type '{typeName}' not found or invalid for route '{path}'");
-                continue;
-            }
-
-            trie.AddRoute(path, (IElement)ActivatorUtilities.CreateInstance(_serviceProvider!, elementType), routeDef["Env"].AsMap());
-            Console.WriteLine($"[MOUNT] {path} -> {typeName}");
-        }
+        new BlueprintCompiler(_serviceProvider!, ResolveType).Compile(trie, await _metadataRegistry.GetBlueprint(ct));
 
         return trie;
     }
@@ -214,6 +226,19 @@ public sealed class Bootstrap
     
     public async ValueTask Stasis()
     {
+        await _gate.WaitAsync();
+        try
+        {
+            await DoStasis();
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    private async ValueTask DoStasis()
+    {
         if (_loadedAssemblies.Count == 0) 
             return;
 
@@ -236,9 +261,17 @@ public sealed class Bootstrap
 
     private async ValueTask Terminate()
     {
-        Console.WriteLine("[DEAD] Closing application...");
-        await Stasis();
-        _killSignal.TrySetResult();
+        await _gate.WaitAsync();
+        try
+        {
+            Console.WriteLine("[DEAD] Closing application...");
+            await DoStasis();
+            _killSignal.TrySetResult();
+        }
+        finally
+        {
+            _gate.Release();
+        }
     }
     
     private static void CollectContent(IMap contentFiles, IMap plan)
