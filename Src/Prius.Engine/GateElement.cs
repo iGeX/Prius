@@ -12,7 +12,7 @@ public sealed class GateElement : IElement
         {
             if (value.IsMap)
             {
-                if (!context.Get("@state").AsBool()) 
+                if (!context.Get("@Active").AsBool()) 
                     return false;
                 
                 var map = value.AsMap();
@@ -22,21 +22,23 @@ public sealed class GateElement : IElement
                 return true;
             }
 
-            return context.Put("@state", value);
+            context.Put("@Active", value);
+            return true;
         }
 
-        var state = context.Get("@state");
+        var state = context.Get("@Active");
         if (!state.AsBool()) 
             return false;
 
-        return context.Put(path, value);
+        context.Put(path, value);
+        return true;
     }
 
     public MapValue Get(IElementContext context, MapPath path)
     {
         if (path.IsEmpty) 
-            return context.Get("@state").AsBool();
+            return context.Get("@Active").AsBool();
 
-        return context.Get("@state").AsBool() ? context.Get(path) : new MapValue();
+        return context.Get("@Active").AsBool() ? context.Get(path) : new MapValue();
     }
 }

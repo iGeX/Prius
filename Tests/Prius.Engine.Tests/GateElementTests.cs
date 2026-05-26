@@ -113,9 +113,9 @@ public sealed class GateElementTests
         var gate = new GateElement();
         var bus = CreateBus(gate, "gate/**");
 
-        // Directly set a map to @state (bypassing GateElement.Put unfolding logic to set STATE)
+        // Directly set a map to @Active (bypassing GateElement.Put unfolding logic to set STATE)
         var stateMap = DictionaryMap.New;
-        stateMap["@state"] = new MapValue(JsonReaderMap.From("{ \"Existing\": true }"));
+        stateMap["@Active"] = new MapValue(JsonReaderMap.From("{ \"Existing\": true }"));
         bus["gate"] = new MapValue(stateMap);
 
         // Gate should be open because Map is not empty

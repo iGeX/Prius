@@ -51,7 +51,7 @@ public sealed class VirtualBus : IMap
             if (resolveResult.Element is EmptyElement || resolveResult.Element == caller.Owner)
             {
                 caller.Node.PutRelative(relativePath, value);
-                return true;
+                return false;
             }
 
             CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Element);

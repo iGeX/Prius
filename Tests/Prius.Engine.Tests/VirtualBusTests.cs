@@ -19,7 +19,7 @@ public sealed class VirtualBusTests
 
         Assert.Equal("123/items", spy.LastRemainingPath);
         Assert.Equal("orders", spy.LastContextKey);
-        Assert.Equal("orders/123/items", spy.LastContext?.AbsolutePath);
+        Assert.Equal("orders", spy.LastContext?.AbsolutePath);
     }
 
     [Fact]

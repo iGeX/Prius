@@ -11,7 +11,9 @@ public sealed class ElementContext : IElementContext, IMap
     private readonly IMap? _envPatch;
     private readonly IMap? _staticEnv;
     
+    internal IElement? Owner { get; }
     internal ElementContext? Parent { get; }
+    internal BusMemoryNode Node { get; }
 
     public string AbsolutePath { get; }
     public string CallerSegment { get; }
@@ -22,20 +24,24 @@ public sealed class ElementContext : IElementContext, IMap
 
     internal ElementContext(
         VirtualBus bus, 
+        IElement? owner,
         ElementContext? parent, 
         string callerSegment, 
         string absolutePath, 
         string key, 
         IMap? envPatch,
-        IMap? staticEnv)
+        IMap? staticEnv,
+        BusMemoryNode node)
     {
         _bus = bus;
+        Owner = owner;
         Parent = parent;
         CallerSegment = callerSegment;
         AbsolutePath = absolutePath;
         Key = key;
         _envPatch = envPatch is not null && !envPatch.IsEmpty ? envPatch : null;
         _staticEnv = staticEnv is not null && !staticEnv.IsEmpty ? staticEnv : null;
+        Node = node;
     }
 
     public bool ContainsKey(string key)
