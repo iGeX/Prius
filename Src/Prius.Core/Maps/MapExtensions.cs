@@ -369,29 +369,42 @@ public static class MapExtensions
 
     public static void Put(this IMap map, MapPath path, MapValue value)
     {
-        while (true)
+        if (path.IsEmpty) 
+            return;
+
+        if (path.Tail.IsEmpty)
         {
-            if (path.IsEmpty) 
-                return;
-
-            if (path.Tail.IsEmpty)
+            var key = path.Head;
+            if (value.IsMap)
             {
-                map[path.Head] = value;
-                return;
+                var existing = map[key];
+                if (!existing.IsMap)
+                {
+                    map[key] = new MapValue(DictionaryMap.New);
+                    existing = map[key];
+                }
+                
+                var targetMap = existing.AsMap();
+                var sourceMap = value.AsMap();
+                foreach (var k in sourceMap.Keys())
+                    targetMap.Put(k, sourceMap[k]);
             }
-
-            var nextValue = map[path.Head];
-            if (!nextValue.IsMap)
+            else
             {
-                map[path.Head] = new MapValue(DictionaryMap.New);
-                map = map[path.Head].AsMap();
-                path = path.Tail;
-                continue;
+                map[key] = value;
             }
-
-            map = nextValue.AsMap();
-            path = path.Tail;
+            return;
         }
+
+        var nextKey = path.Head;
+        var nextValue = map[nextKey];
+        if (!nextValue.IsMap)
+        {
+            map[nextKey] = new MapValue(DictionaryMap.New);
+            nextValue = map[nextKey];
+        }
+        
+        nextValue.AsMap().Put(path.Tail, value);
     }
     
     public static int GetSpanHashCode(this ReadOnlySpan<char> span)

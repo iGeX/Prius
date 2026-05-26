@@ -5,16 +5,15 @@ using System.Collections.Generic;
 using Core.Maps;
 using Abstractions;
 
-public sealed class ElementContext : IElementContext, IMap
+public sealed class ElementContext : IElementContext
 {
     private readonly VirtualBus _bus;
     private readonly IMap? _envPatch;
     private readonly IMap? _staticEnv;
     
-    internal IElement? Owner { get; }
-    internal ElementContext? Parent { get; }
-    internal BusMemoryNode Node { get; }
-
+    internal IMap Node { get; }
+    private ElementContext? Parent { get; }
+    
     public string AbsolutePath { get; }
     public string CallerSegment { get; }
     public string Key { get; }
@@ -23,18 +22,16 @@ public sealed class ElementContext : IElementContext, IMap
     public bool CanWrite => false;
 
     internal ElementContext(
-        VirtualBus bus, 
-        IElement? owner,
+        VirtualBus bus,
         ElementContext? parent, 
         string callerSegment, 
         string absolutePath, 
         string key, 
         IMap? envPatch,
         IMap? staticEnv,
-        BusMemoryNode node)
+        IMap node)
     {
         _bus = bus;
-        Owner = owner;
         Parent = parent;
         CallerSegment = callerSegment;
         AbsolutePath = absolutePath;

@@ -15,13 +15,13 @@ public sealed class VirtualBus : IMap
     
     private RoutingTrie _routingTrie;
     private readonly ElementContext _rootContext;
-    private readonly BusMemoryNode _memoryRoot = new();
+    private readonly DictionaryMap _memoryRoot = DictionaryMap.New;
 
     public VirtualBus(RoutingTrie routingTrie)
     {
         _routingTrie = routingTrie ?? throw new ArgumentNullException(nameof(routingTrie));
         _cacheLookup = _routeCache.GetAlternateLookup<ReadOnlySpan<char>>();
-        _rootContext = new ElementContext(this, null, null, string.Empty, string.Empty, string.Empty, DictionaryMap.New, DictionaryMap.New, _memoryRoot);
+        _rootContext = new ElementContext(this, null, string.Empty, string.Empty, string.Empty, DictionaryMap.New, DictionaryMap.New, _memoryRoot);
     }
 
     public void UpdateTrie(RoutingTrie trie)
@@ -34,23 +34,20 @@ public sealed class VirtualBus : IMap
 
     public MapValue Get(MapPath path, IMap? envPatch = null) => DispatchGet(_rootContext, path, envPatch);
 
-    public void ClearCache() => _routeCache.Clear();
+    private void ClearCache() => _routeCache.Clear();
 
     internal bool DispatchPut(ElementContext caller, MapPath relativePath, MapValue value, IMap? envPatch)
     {
         var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
-        if (string.IsNullOrEmpty(absolutePathString)) 
-            return false;
-
         var nodeLock = _nodeLocks.GetOrAdd(absolutePathString, _ => new object());
         
         lock (nodeLock)
         {
             var resolveResult = _routingTrie.Resolve(new MapPath(absolutePathString.AsSpan()));
             
-            if (resolveResult.Element is EmptyElement || resolveResult.Element == caller.Owner)
+            if (resolveResult.Element is EmptyElement || relativePath.IsEmpty)
             {
-                caller.Node.PutRelative(relativePath, value);
+                caller.Node.Put(relativePath, value);
                 return false;
             }
 
@@ -60,8 +57,8 @@ public sealed class VirtualBus : IMap
             var mountRelativePathStr = GetMountPath(relativePath.ToString(), resolveResult.RemainingPath);
             
             var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).Head;
-            var memoryNode = FindOrCreateMemoryNode(caller.Node, new MapPath(mountRelativePathStr.AsSpan()));
-            var subContext = new ElementContext(this, resolveResult.Element, caller, callerSegment, mountPathStr, resolveResult.ElementKey, envPatch, resolveResult.StaticEnv, memoryNode);
+            var memoryMap = FindOrCreateMemoryMap(caller.Node, new MapPath(mountRelativePathStr.AsSpan()));
+            var subContext = new ElementContext(this, caller, callerSegment, mountPathStr, resolveResult.ElementKey, envPatch, resolveResult.StaticEnv, memoryMap);
 
             return resolveResult.Element.Put(subContext, resolveResult.RemainingPath, value);
         }
@@ -79,8 +76,8 @@ public sealed class VirtualBus : IMap
         {
             var resolveResult = _routingTrie.Resolve(new MapPath(absolutePathString.AsSpan()));
             
-            if (resolveResult.Element is EmptyElement || resolveResult.Element == caller.Owner) 
-                return caller.Node.GetRelative(relativePath);
+            if (resolveResult.Element is EmptyElement || relativePath.IsEmpty) 
+                return caller.Node.Get(relativePath);
 
             CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Element);
 
@@ -88,8 +85,8 @@ public sealed class VirtualBus : IMap
             var mountRelativePathStr = GetMountPath(relativePath.ToString(), resolveResult.RemainingPath);
             
             var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).Head;
-            var memoryNode = FindOrCreateMemoryNode(caller.Node, new MapPath(mountRelativePathStr.AsSpan()));
-            var subContext = new ElementContext(this, resolveResult.Element, caller, callerSegment, mountPathStr, resolveResult.ElementKey, envPatch, resolveResult.StaticEnv, memoryNode);
+            var memoryMap = FindOrCreateMemoryMap(caller.Node, new MapPath(mountRelativePathStr.AsSpan()));
+            var subContext = new ElementContext(this, caller, callerSegment, mountPathStr, resolveResult.ElementKey, envPatch, resolveResult.StaticEnv, memoryMap);
 
             return resolveResult.Element.Get(subContext, resolveResult.RemainingPath);
         }
@@ -104,12 +101,18 @@ public sealed class VirtualBus : IMap
         return fullPath.Substring(0, keepLength);
     }
 
-    private static BusMemoryNode FindOrCreateMemoryNode(BusMemoryNode startNode, MapPath path)
+    private static IMap FindOrCreateMemoryMap(IMap startMap, MapPath path)
     {
-        var current = startNode;
+        var current = startMap;
         while (!path.IsEmpty)
         {
-            current = current.GetOrCreateChild(path.Head);
+            var next = current[path.Head];
+            if (!next.IsMap)
+            {
+                current[path.Head] = new MapValue(DictionaryMap.New);
+                next = current[path.Head];
+            }
+            current = next.AsMap();
             path = path.Tail;
         }
         return current;
@@ -133,16 +136,6 @@ public sealed class VirtualBus : IMap
                 Console.WriteLine($"[VirtualBus] Background PutAbsolute Error: {ex.Message}");
             }
         });
-    }
-
-    private void WriteToMemory(string absolutePath, MapValue value)
-    {
-        _memoryRoot.PutRelative(new MapPath(absolutePath.AsSpan()), value);
-    }
-
-    private MapValue ReadFromMemory(string absolutePath)
-    {
-        return _memoryRoot.GetRelative(new MapPath(absolutePath.AsSpan()));
     }
 
     private void CacheResolvedRoute(ReadOnlySpan<char> absolutePath, IElement element)
