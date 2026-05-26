@@ -118,6 +118,23 @@ public readonly struct MapValue : IEquatable<MapValue>, IComparable<MapValue>
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public IMap AsMap() => IsMap ? (IMap) _content : DictionaryMap.New;
+
+    private T MapTo<T>()
+    {
+        if (typeof(T) == typeof(bool))
+        {
+            var b = !((IMap)_content).IsEmpty;
+            return Unsafe.As<bool, T>(ref b);
+        }
+
+        if (typeof(T) == typeof(IMap))
+        {
+            var m = (IMap)_content;
+            return Unsafe.As<IMap, T>(ref m);
+        }
+
+        return default!;
+    }
     
     private T LongTo<T>()
     {
@@ -125,7 +142,7 @@ public readonly struct MapValue : IEquatable<MapValue>, IComparable<MapValue>
 
         if (typeof(T) == typeof(long)) return Unsafe.As<long, T>(ref val);
         if (typeof(T) == typeof(decimal)) { var d = (decimal)val; return Unsafe.As<decimal, T>(ref d); }
-        if (typeof(T) == typeof(bool)) { var b = val > 0; return Unsafe.As<bool, T>(ref b); }
+        if (typeof(T) == typeof(bool)) { var b = val != 0; return Unsafe.As<bool, T>(ref b); }
         if (typeof(T) == typeof(string)) { var s = val.ToString(); return Unsafe.As<string, T>(ref s); }
         if (typeof(T) == typeof(DateTimeOffset)) { var dt = DateTimeOffset.FromUnixTimeMilliseconds(val); return Unsafe.As<DateTimeOffset, T>(ref dt); }
 
@@ -138,7 +155,7 @@ public readonly struct MapValue : IEquatable<MapValue>, IComparable<MapValue>
 
         if (typeof(T) == typeof(decimal)) return Unsafe.As<decimal, T>(ref val);
         if (typeof(T) == typeof(long)) { var l = (long)Math.Round(val); return Unsafe.As<long, T>(ref l); }
-        if (typeof(T) == typeof(bool)) { var b = val > 0; return Unsafe.As<bool, T>(ref b); }
+        if (typeof(T) == typeof(bool)) { var b = val != 0; return Unsafe.As<bool, T>(ref b); }
         if (typeof(T) == typeof(string)) { var s = val.ToString(CultureInfo.InvariantCulture); return Unsafe.As<string, T>(ref s); }
 
         return default!;
@@ -234,7 +251,7 @@ public readonly struct MapValue : IEquatable<MapValue>, IComparable<MapValue>
         _type switch
         {
             MapValueType.Empty => default!,
-            MapValueType.Map => default!,
+            MapValueType.Map => MapTo<T>(),
             MapValueType.String => StringTo<T>(),
             MapValueType.Long => LongTo<T>(),
             MapValueType.Boolean => BoolTo<T>(),

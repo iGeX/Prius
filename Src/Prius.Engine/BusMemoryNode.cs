@@ -38,13 +38,7 @@ internal sealed class BusMemoryNode : IMap
         }
         set
         {
-            Children ??= new Dictionary<string, BusMemoryNode>(StringComparer.Ordinal);
-            if (!Children.TryGetValue(key, out var node))
-            {
-                node = new BusMemoryNode();
-                Children[key] = node;
-            }
-            
+            var node = GetOrCreateChild(key);
             if (value.IsMap)
             {
                 var map = value.AsMap();
@@ -53,7 +47,67 @@ internal sealed class BusMemoryNode : IMap
                 foreach (var k in map.Keys()) node[k] = map[k];
             }
             else
+            {
+                node.Children = null;
                 node.Value = value;
+            }
         }
+    }
+
+    public BusMemoryNode GetOrCreateChild(string segment)
+    {
+        Children ??= new Dictionary<string, BusMemoryNode>(StringComparer.Ordinal);
+        if (!Children.TryGetValue(segment, out var node))
+        {
+            node = new BusMemoryNode();
+            Children[segment] = node;
+        }
+        return node;
+    }
+
+    public BusMemoryNode? GetChild(string segment)
+    {
+        if (Children != null && Children.TryGetValue(segment, out var node)) 
+            return node;
+        return null;
+    }
+
+    public void PutRelative(MapPath path, MapValue value)
+    {
+        var current = this;
+        while (!path.IsEmpty)
+        {
+            var segment = path.Head;
+            path = path.Tail;
+
+            if (path.IsEmpty)
+            {
+                current[segment] = value;
+                return;
+            }
+            current = current.GetOrCreateChild(segment);
+        }
+        current.Value = value;
+    }
+
+    public MapValue GetRelative(MapPath path)
+    {
+        if (path.IsEmpty) 
+            return (Children is { Count: > 0 } || Value.IsEmpty) ? new MapValue(this) : Value;
+
+        var current = this;
+        while (!path.IsEmpty)
+        {
+            var segment = path.Head;
+            path = path.Tail;
+
+            if (path.IsEmpty) 
+                return current[segment];
+
+            current = current.GetChild(segment);
+            if (current == null) 
+                return Empty.Instance;
+        }
+        return (current.Children is { Count: > 0 } || current.Value.IsEmpty) ? new MapValue(current) : current.Value;
     }
 }

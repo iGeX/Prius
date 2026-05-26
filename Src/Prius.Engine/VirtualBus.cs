@@ -11,7 +11,7 @@ public sealed class VirtualBus : IMap
 {
     private readonly ConcurrentDictionary<string, IElement> _routeCache = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, IElement>.AlternateLookup<ReadOnlySpan<char>> _cacheLookup;
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _nodeLocks = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, object> _nodeLocks = new(StringComparer.Ordinal);
     
     private RoutingTrie _routingTrie;
     private readonly ElementContext _rootContext;
@@ -21,7 +21,7 @@ public sealed class VirtualBus : IMap
     {
         _routingTrie = routingTrie ?? throw new ArgumentNullException(nameof(routingTrie));
         _cacheLookup = _routeCache.GetAlternateLookup<ReadOnlySpan<char>>();
-        _rootContext = new ElementContext(this, null, string.Empty, string.Empty, string.Empty, DictionaryMap.New, DictionaryMap.New);
+        _rootContext = new ElementContext(this, null, null, string.Empty, string.Empty, string.Empty, DictionaryMap.New, DictionaryMap.New, _memoryRoot);
     }
 
     public void UpdateTrie(RoutingTrie trie)
@@ -38,62 +38,81 @@ public sealed class VirtualBus : IMap
 
     internal bool DispatchPut(ElementContext caller, MapPath relativePath, MapValue value, IMap? envPatch)
     {
-        if (relativePath.IsEmpty)
+        var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
+        if (string.IsNullOrEmpty(absolutePathString)) 
             return false;
 
-        var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
-        var nodeLock = _nodeLocks.GetOrAdd(absolutePathString, _ => new SemaphoreSlim(1, 1));
-        nodeLock.Wait();
-
-        try
+        var nodeLock = _nodeLocks.GetOrAdd(absolutePathString, _ => new object());
+        
+        lock (nodeLock)
         {
             var resolveResult = _routingTrie.Resolve(new MapPath(absolutePathString.AsSpan()));
             
-            if (resolveResult.Element is EmptyElement)
+            if (resolveResult.Element is EmptyElement || resolveResult.Element == caller.Owner)
             {
-                WriteToMemory(absolutePathString, value);
-                return false;
+                caller.Node.PutRelative(relativePath, value);
+                return true;
             }
 
             CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Element);
 
-            var callerSegment = relativePath.Head;
-            var subContext = new ElementContext(this, caller, callerSegment, absolutePathString, resolveResult.ElementKey, envPatch, resolveResult.StaticEnv);
+            var mountPathStr = GetMountPath(absolutePathString, resolveResult.RemainingPath);
+            var mountRelativePathStr = GetMountPath(relativePath.ToString(), resolveResult.RemainingPath);
+            
+            var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).Head;
+            var memoryNode = FindOrCreateMemoryNode(caller.Node, new MapPath(mountRelativePathStr.AsSpan()));
+            var subContext = new ElementContext(this, resolveResult.Element, caller, callerSegment, mountPathStr, resolveResult.ElementKey, envPatch, resolveResult.StaticEnv, memoryNode);
 
             return resolveResult.Element.Put(subContext, resolveResult.RemainingPath, value);
-        }
-        finally
-        {
-            nodeLock.Release();
         }
     }
 
     internal MapValue DispatchGet(ElementContext caller, MapPath relativePath, IMap? envPatch)
     {
-        if (relativePath.IsEmpty)
+        var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
+        if (string.IsNullOrEmpty(absolutePathString)) 
             return new MapValue();
 
-        var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
-        var nodeLock = _nodeLocks.GetOrAdd(absolutePathString, _ => new SemaphoreSlim(1, 1));
-        nodeLock.Wait();
-
-        try
+        var nodeLock = _nodeLocks.GetOrAdd(absolutePathString, _ => new object());
+        
+        lock (nodeLock)
         {
             var resolveResult = _routingTrie.Resolve(new MapPath(absolutePathString.AsSpan()));
             
-            if (resolveResult.Element is EmptyElement) return ReadFromMemory(absolutePathString);
+            if (resolveResult.Element is EmptyElement || resolveResult.Element == caller.Owner) 
+                return caller.Node.GetRelative(relativePath);
 
             CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Element);
 
-            var callerSegment = relativePath.Head;
-            var subContext = new ElementContext(this, caller, callerSegment, absolutePathString, resolveResult.ElementKey, envPatch, resolveResult.StaticEnv);
+            var mountPathStr = GetMountPath(absolutePathString, resolveResult.RemainingPath);
+            var mountRelativePathStr = GetMountPath(relativePath.ToString(), resolveResult.RemainingPath);
+            
+            var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).Head;
+            var memoryNode = FindOrCreateMemoryNode(caller.Node, new MapPath(mountRelativePathStr.AsSpan()));
+            var subContext = new ElementContext(this, resolveResult.Element, caller, callerSegment, mountPathStr, resolveResult.ElementKey, envPatch, resolveResult.StaticEnv, memoryNode);
 
             return resolveResult.Element.Get(subContext, resolveResult.RemainingPath);
         }
-        finally
+    }
+
+    private static string GetMountPath(string fullPath, MapPath remainingPath)
+    {
+        if (remainingPath.IsEmpty) return fullPath;
+        var keepLength = fullPath.Length - remainingPath.Length;
+        if (keepLength > 0 && fullPath[keepLength - 1] == '/')
+            keepLength--;
+        return fullPath.Substring(0, keepLength);
+    }
+
+    private static BusMemoryNode FindOrCreateMemoryNode(BusMemoryNode startNode, MapPath path)
+    {
+        var current = startNode;
+        while (!path.IsEmpty)
         {
-            nodeLock.Release();
+            current = current.GetOrCreateChild(path.Head);
+            path = path.Tail;
         }
+        return current;
     }
 
     internal void DispatchPutAbsolute(MapPath absolutePath, MapValue value)
@@ -118,53 +137,12 @@ public sealed class VirtualBus : IMap
 
     private void WriteToMemory(string absolutePath, MapValue value)
     {
-        var path = new MapPath(absolutePath.AsSpan());
-        var current = _memoryRoot;
-
-        while (!path.IsEmpty)
-        {
-            var segment = path.Head;
-            path = path.Tail;
-
-            if (string.IsNullOrEmpty(segment)) continue;
-
-            if (path.IsEmpty)
-            {
-                current[segment] = value;
-                return;
-            }
-
-            current.Children ??= new Dictionary<string, BusMemoryNode>(StringComparer.Ordinal);
-            
-            if (!current.Children.TryGetValue(segment, out var nextNode))
-            {
-                nextNode = new BusMemoryNode();
-                current.Children[segment] = nextNode;
-            }
-            current = nextNode;
-        }
+        _memoryRoot.PutRelative(new MapPath(absolutePath.AsSpan()), value);
     }
 
     private MapValue ReadFromMemory(string absolutePath)
     {
-        var path = new MapPath(absolutePath.AsSpan());
-        var current = _memoryRoot;
-        
-        if (path.IsEmpty) return new MapValue(current);
-
-        while (!path.IsEmpty)
-        {
-            var segment = path.Head;
-            path = path.Tail;
-
-            if (string.IsNullOrEmpty(segment)) continue;
-
-            if (path.IsEmpty) return current[segment];
-
-            if (current.Children == null || !current.Children.TryGetValue(segment, out current)) return Empty.Instance;
-        }
-
-        return Empty.Instance;
+        return _memoryRoot.GetRelative(new MapPath(absolutePath.AsSpan()));
     }
 
     private void CacheResolvedRoute(ReadOnlySpan<char> absolutePath, IElement element)

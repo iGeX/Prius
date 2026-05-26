@@ -99,6 +99,9 @@ public sealed class RoutingTrie
         if (current.TerminalElement != null)
             return new ResolveResult(current.TerminalElement, string.Empty, lastMatchedKey, current.TerminalStaticEnv);
 
+        if (current.DeepWildcardElement != null)
+            return new ResolveResult(current.DeepWildcardElement, string.Empty, lastMatchedKey, current.DeepWildcardStaticEnv);
+
         return fallbackElement != null 
             ? new ResolveResult(fallbackElement, SlicePath(originalPath, fallbackDepth), fallbackKey, fallbackStaticEnv) 
             : new ResolveResult(EmptyElement.Instance, string.Empty, lastMatchedKey, null);
