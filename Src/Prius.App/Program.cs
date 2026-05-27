@@ -1,6 +1,7 @@
 using System;
 using Prius.Core.Maps;
 using Prius.Engine;
+using Prius.Engine.Abstractions;
 
 class Program
 {
@@ -8,7 +9,7 @@ class Program
     {
         var trie = new RoutingTrie();
         trie.AddRoute("gate/**", new GateElement());
-        var bus = new VirtualBus(trie);
+        IElementContext bus = VirtualBusFactory.Create(trie);
 
         var stateMap = DictionaryMap.New;
         stateMap["@state"] = new MapValue(JsonReaderMap.From("{ \"Existing\": true }"));

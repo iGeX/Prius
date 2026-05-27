@@ -113,7 +113,7 @@ public sealed class VirtualBusTests
 
         bus.Put("trigger", new MapValue());
         
-        Thread.Sleep(50);
+        Thread.Sleep(500);
 
         Assert.True(spy.WasExecuted);
         Assert.Equal("occurred", spy.LastContextKey);

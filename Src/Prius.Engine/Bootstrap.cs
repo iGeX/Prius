@@ -89,7 +89,7 @@ public sealed class Bootstrap
             registry.ExitStasis();
             services.AddSingleton<IDataIntentsRegistry>(registry);
             services.AddSingleton<IDataIntentsProvider>(registry);
-            services.AddSingleton(_bus);
+            services.AddSingleton<IElementContext>(_bus);
 
             foreach (var module in _modules) 
                 module.ConfigureServices(services, config);

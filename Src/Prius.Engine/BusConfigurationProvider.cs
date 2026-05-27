@@ -1,10 +1,11 @@
 using Microsoft.Extensions.Configuration;
+using Prius.Engine.Abstractions;
 
 namespace Prius.Engine;
 
-public sealed class BusConfigurationProvider(VirtualBus bus, string basePath = "/Configuration") : ConfigurationProvider
+public sealed class BusConfigurationProvider(IElementContext bus, string basePath = "/Configuration") : ConfigurationProvider
 {
-    private readonly VirtualBus _bus = bus ?? throw new ArgumentNullException(nameof(bus));
+    private readonly IElementContext _bus = bus ?? throw new ArgumentNullException(nameof(bus));
 
     public void NotifyConfigurationChanged() => OnReload();
 
@@ -36,7 +37,7 @@ public sealed class BusConfigurationProvider(VirtualBus bus, string basePath = "
     }
 }
 
-public sealed class BusConfigurationSource(VirtualBus bus, string basePath = "/Configuration") : IConfigurationSource
+public sealed class BusConfigurationSource(IElementContext bus, string basePath = "/Configuration") : IConfigurationSource
 {
     public IConfigurationProvider Build(IConfigurationBuilder builder) => 
         new BusConfigurationProvider(bus, basePath);

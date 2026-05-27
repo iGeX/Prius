@@ -1,18 +1,38 @@
-﻿namespace Prius.Engine;
+namespace Prius.Engine;
 
 using System;
 using System.Collections.Generic;
 using Core.Maps;
 using Abstractions;
 
-public sealed class ElementContext : IElementContext
+internal interface IBusContext : IElementContext
+{
+    IElement? Owner { get; }
+    IMap Node { get; }
+    RoutingNode MountNode { get; }
+    IMap? StaticEnv { get; }
+    MatchType MatchType { get; }
+    bool IsUnrolled { get; }
+}
+
+public sealed class ElementContext : IBusContext
 {
     private readonly VirtualBus _bus;
     private readonly IMap? _envPatch;
     private readonly IMap? _staticEnv;
+    private readonly IElement? _owner;
+    private readonly IMap _node;
+    private readonly RoutingNode _mountNode;
+    private readonly MatchType _matchType;
+    private readonly bool _isUnrolled;
     
-    internal IMap Node { get; }
-    private ElementContext? Parent { get; }
+    IElement? IBusContext.Owner => _owner;
+    IMap IBusContext.Node => _node;
+    RoutingNode IBusContext.MountNode => _mountNode;
+    IMap? IBusContext.StaticEnv => _staticEnv;
+    MatchType IBusContext.MatchType => _matchType;
+    bool IBusContext.IsUnrolled => _isUnrolled;
+    private IElementContext? Parent { get; }
     
     public string AbsolutePath { get; }
     public string CallerSegment { get; }
@@ -23,22 +43,30 @@ public sealed class ElementContext : IElementContext
 
     internal ElementContext(
         VirtualBus bus,
-        ElementContext? parent, 
+        IElement? owner,
+        IElementContext? parent, 
         string callerSegment, 
         string absolutePath, 
         string key, 
         IMap? envPatch,
         IMap? staticEnv,
-        IMap node)
+        IMap node,
+        RoutingNode mountNode,
+        MatchType matchType,
+        bool isUnrolled)
     {
         _bus = bus;
+        _owner = owner;
         Parent = parent;
         CallerSegment = callerSegment;
         AbsolutePath = absolutePath;
         Key = key;
         _envPatch = envPatch is not null && !envPatch.IsEmpty ? envPatch : null;
         _staticEnv = staticEnv is not null && !staticEnv.IsEmpty ? staticEnv : null;
-        Node = node;
+        _node = node;
+        _mountNode = mountNode;
+        _matchType = matchType;
+        _isUnrolled = isUnrolled;
     }
 
     public bool ContainsKey(string key)
@@ -78,23 +106,23 @@ public sealed class ElementContext : IElementContext
     public IEnumerable<string> Keys(bool? ascending = null)
     {
         var uniqueKeys = new HashSet<string>(StringComparer.Ordinal);
-        var current = this;
+        var current = this as IElementContext;
 
-        while (current is not null)
+        while (current is ElementContext ctx)
         {
-            if (current._envPatch is not null)
+            if (ctx._envPatch is not null)
             {
-                foreach (var key in current._envPatch.Keys(ascending))
+                foreach (var key in ctx._envPatch.Keys(ascending))
                     uniqueKeys.Add(key);
             }
             
-            if (current._staticEnv is not null)
+            if (ctx._staticEnv is not null)
             {
-                foreach (var key in current._staticEnv.Keys(ascending))
+                foreach (var key in ctx._staticEnv.Keys(ascending))
                     uniqueKeys.Add(key);
             }
 
-            current = current.Parent;
+            current = ctx.Parent;
         }
 
         return uniqueKeys;
@@ -107,5 +135,5 @@ public sealed class ElementContext : IElementContext
         _bus.DispatchGet(this, path, envPatch);
 
     public void PutAbsolute(MapPath absolutePath, MapValue value) => 
-        _bus.DispatchPutAbsolute(absolutePath, value);
+        _bus.PutAbsolute(absolutePath, value);
 }
