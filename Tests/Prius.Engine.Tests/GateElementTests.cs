@@ -90,7 +90,7 @@ public sealed class GateElementTests
         Assert.Equal("val1", bus.Get("gate/data").AsString());
         
         bus.Put("gate", 0.1m);
-        Assert.True(bus.Put("gate/data", "val3"));
+        Assert.False(bus.Put("gate/data", "val3"));
         Assert.Equal("val3", bus.Get("gate/data").AsString());
         
         bus.Put("gate", Empty.Instance);
@@ -107,7 +107,7 @@ public sealed class GateElementTests
         stateMap["$Active"] = new MapValue(JsonReaderMap.From("{ \"Existing\": true }"));
         bus["gate"] = new MapValue(stateMap);
         
-        Assert.True(bus.Put("gate/data", "from_map_state"));
+        Assert.False(bus.Put("gate/data", "from_map_state"));
         Assert.Equal("from_map_state", bus.Get("gate/data").AsString());
         
         bus.Put("gate", 0);

@@ -93,6 +93,10 @@ public sealed class RoutingTrie
                 lastMatchedKey = segment;
                 path = path.Tail;
                 currentDepth++;
+                
+                if (current.TerminalElement != null)
+                    return new ResolveResult(current.TerminalElement, path, lastMatchedKey, current.TerminalStaticEnv, current, MatchType.Terminal);
+                
                 continue;
             }
 
@@ -105,6 +109,10 @@ public sealed class RoutingTrie
                 lastMatchedKey = segment;
                 path = path.Tail;
                 currentDepth++;
+                
+                if (current.TerminalElement != null)
+                    return new ResolveResult(current.TerminalElement, path, lastMatchedKey, current.TerminalStaticEnv, current, MatchType.Terminal);
+                
                 continue;
             }
 

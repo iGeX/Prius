@@ -197,7 +197,7 @@ public sealed class SpyElement : IElement
         return true;
     }
 
-    public MapValue Get(IElementContext context, MapPath path) => new();
+    public MapValue Get(IElementContext context, MapPath path) => context.Get(path);
 }
 
 public sealed class RecursiveElement : IElement

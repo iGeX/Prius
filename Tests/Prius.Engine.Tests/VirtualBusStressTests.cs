@@ -42,14 +42,18 @@ public sealed class VirtualBusStressTests
         var swapCount = 0;
         var swapper = Task.Run(async () => 
         {
-            while (!cts.IsCancellationRequested)
+            try
             {
-                var trie = new RoutingTrie();
-                trie.AddRoute("/api/test", new AtomicSpyElement());
-                bus.UpdateTrie(trie);
-                swapCount++;
-                await Task.Delay(10, cts.Token);
+                while (!cts.IsCancellationRequested)
+                {
+                    var trie = new RoutingTrie();
+                    trie.AddRoute("/api/test", new AtomicSpyElement());
+                    bus.UpdateTrie(trie);
+                    swapCount++;
+                    await Task.Delay(10, cts.Token);
+                }
             }
+            catch (OperationCanceledException) { }
         }, TestContext.Current.CancellationToken);
 
         await Task.WhenAll(workers.Concat([swapper]));
