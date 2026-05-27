@@ -158,7 +158,6 @@ public readonly ref struct ResolveResult
 {
     public IElement Element { get; }
     public MapPath RemainingPath { get; }
-    public string ElementKey { get; }
     public IMap? StaticEnv { get; }
     internal RoutingNode MatchNode { get; }
     public MatchType MatchType { get; }
@@ -167,7 +166,6 @@ public readonly ref struct ResolveResult
     {
         Element = element;
         RemainingPath = remainingPath;
-        ElementKey = elementKey;
         StaticEnv = staticEnv;
         MatchNode = node;
         MatchType = matchType;

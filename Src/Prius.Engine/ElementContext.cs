@@ -9,13 +9,11 @@ internal interface IBusContext : IElementContext
 {
     int Depth { get; }
     IElement? Owner { get; }
-    string ElementKey { get; }
     IMap Node { get; }
     IMap? ParentNode { get; }
     RoutingNode MountNode { get; }
     IMap? StaticEnv { get; }
     MatchType MatchType { get; }
-    bool IsUnrolled { get; }
 }
 
 public sealed class ElementContext : IBusContext
@@ -28,19 +26,15 @@ public sealed class ElementContext : IBusContext
     private readonly IMap? _parentNode;
     private readonly RoutingNode _mountNode;
     private readonly MatchType _matchType;
-    private readonly bool _isUnrolled;
     private readonly int _depth;
-    private readonly string _elementKey;
     
     int IBusContext.Depth => _depth;
     IElement? IBusContext.Owner => _owner;
-    string IBusContext.ElementKey => _elementKey;
     IMap IBusContext.Node => _node;
     IMap? IBusContext.ParentNode => _parentNode;
     RoutingNode IBusContext.MountNode => _mountNode;
     IMap? IBusContext.StaticEnv => _staticEnv;
     MatchType IBusContext.MatchType => _matchType;
-    bool IBusContext.IsUnrolled => _isUnrolled;
     private IElementContext? Parent { get; }
     
     public string AbsolutePath { get; }
@@ -56,14 +50,12 @@ public sealed class ElementContext : IBusContext
         int depth,
         string callerSegment, 
         string absolutePath, 
-        string elementKey, 
         IMap? envPatch,
         IMap? staticEnv,
         IMap node,
         IMap? parentNode,
         RoutingNode mountNode,
-        MatchType matchType,
-        bool isUnrolled)
+        MatchType matchType)
     {
         _bus = bus;
         _owner = owner;
@@ -71,14 +63,12 @@ public sealed class ElementContext : IBusContext
         _depth = depth;
         CallerSegment = callerSegment;
         AbsolutePath = absolutePath;
-        _elementKey = elementKey;
         _envPatch = envPatch is not null && !envPatch.IsEmpty ? envPatch : null;
         _staticEnv = staticEnv is not null && !staticEnv.IsEmpty ? staticEnv : null;
         _node = node;
         _parentNode = parentNode;
         _mountNode = mountNode;
         _matchType = matchType;
-        _isUnrolled = isUnrolled;
     }
 
     public bool ContainsKey(string key)

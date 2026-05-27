@@ -111,6 +111,18 @@ public ref struct MapPath
             return new MapPath(_path[(_cachedSeparatorIndex + 1)..]);
         }
     }
+    
+    public string LastSegment
+    {
+        get
+        {
+            if (IsEmpty)
+                return string.Empty;
+
+            var tail = Tail;
+            return tail.IsEmpty ? Head : tail.LastSegment;
+        }
+    }
 
     public bool IsHeadEquals(string segment)
     {

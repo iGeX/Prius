@@ -37,7 +37,6 @@ internal sealed class VirtualBus : IBusContext
 
     public string AbsolutePath => string.Empty;
     public string CallerSegment => string.Empty;
-    public string ElementKey => string.Empty;
 
     public int Depth => 0;
     public IElement? Owner => null;
@@ -46,7 +45,6 @@ internal sealed class VirtualBus : IBusContext
     public RoutingNode MountNode => _routingTrie.Root;
     public IMap? StaticEnv => null;
     public MatchType MatchType => MatchType.None;
-    public bool IsUnrolled => false;
 
     public bool Put(MapPath path, MapValue value, IMap? envPatch = null) => DispatchPut(this, path, value, envPatch);
 
@@ -89,11 +87,8 @@ internal sealed class VirtualBus : IBusContext
             var memoryMaps = FindOrCreateMemoryMap(caller.Node, new MapPath(mountRelativePathStr.AsSpan()));
             var parentMap = memoryMaps.Parent ?? caller.ParentNode;
             
-            var isUnrolled = resolveResult.Element == initialFallback;
-            var elementKey = string.IsNullOrEmpty(resolveResult.ElementKey) ? caller.ElementKey : resolveResult.ElementKey;
             var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).Head;
-
-            var subContext = new ElementContext(this, resolveResult.Element, caller, caller.Depth + 1, callerSegment, mountPathStr, elementKey, envPatch, resolveResult.StaticEnv, memoryMaps.Current, parentMap, resolveResult.MatchNode, resolveResult.MatchType, isUnrolled);
+            var subContext = new ElementContext(this, resolveResult.Element, caller, caller.Depth + 1, callerSegment, mountPathStr, envPatch, resolveResult.StaticEnv, memoryMaps.Current, parentMap, resolveResult.MatchNode, resolveResult.MatchType);
 
             return resolveResult.Element.Put(subContext, resolveResult.RemainingPath, value);
         }
@@ -106,9 +101,9 @@ internal sealed class VirtualBus : IBusContext
             if (caller.ParentNode != null)
             {
                 if (value.IsMap)
-                    caller.ParentNode.Put(new MapPath(caller.ElementKey), value);
+                    caller.ParentNode.Put(new MapPath(new MapPath(caller.CallerSegment).LastSegment), value);
                 else
-                    caller.ParentNode[caller.ElementKey] = value;
+                    caller.ParentNode[new MapPath(caller.CallerSegment).LastSegment] = value;
             }
             else if (value.IsMap)
             {
@@ -151,11 +146,8 @@ internal sealed class VirtualBus : IBusContext
             var memoryMaps = FindOrCreateMemoryMap(caller.Node, new MapPath(mountRelativePathStr.AsSpan()));
             var parentMap = memoryMaps.Parent ?? caller.ParentNode;
             
-            var isUnrolled = resolveResult.Element == initialFallback;
-            var elementKey = string.IsNullOrEmpty(resolveResult.ElementKey) ? caller.ElementKey : resolveResult.ElementKey;
             var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).Head;
-
-            var subContext = new ElementContext(this, resolveResult.Element, caller, caller.Depth + 1, callerSegment, mountPathStr, elementKey, envPatch, resolveResult.StaticEnv, memoryMaps.Current, parentMap, resolveResult.MatchNode, resolveResult.MatchType, isUnrolled);
+            var subContext = new ElementContext(this, resolveResult.Element, caller, caller.Depth + 1, callerSegment, mountPathStr, envPatch, resolveResult.StaticEnv, memoryMaps.Current, parentMap, resolveResult.MatchNode, resolveResult.MatchType);
 
             return resolveResult.Element.Get(subContext, resolveResult.RemainingPath);
         }
@@ -164,7 +156,7 @@ internal sealed class VirtualBus : IBusContext
     private static MapValue ReadFromMemory(IBusContext caller, MapPath relativePath)
     {
         if (relativePath.IsEmpty && caller.ParentNode != null)
-            return caller.ParentNode[caller.ElementKey];
+            return caller.ParentNode[new MapPath(caller.CallerSegment).LastSegment];
         return caller.Node.Get(relativePath);
     }
 
