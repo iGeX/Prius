@@ -60,10 +60,8 @@ public sealed class CompilerPerformanceTests
         compiler.Compile(trie, blueprint);
         sw.Stop();
 
-        // Assert it's reasonably fast (less than 1s for 10k routes on a typical dev machine)
         Assert.True(sw.ElapsedMilliseconds < 1000, $"Compilation took too long: {sw.ElapsedMilliseconds}ms");
         
-        // Quick verification of some random route
         var result = trie.Resolve("/mount/point_500/route_5");
         Assert.Same(typeof(MockElement), result.Element.GetType());
         Assert.Equal("500", result.StaticEnv?["Instance"].AsString());

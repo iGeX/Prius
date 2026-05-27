@@ -145,7 +145,6 @@ public sealed class BlueprintCompilerTests
         var trie = new RoutingTrie();
         var compiler = new BlueprintCompiler(_serviceProvider, ResolveType);
         
-        // Define 5 levels of components, each overriding or adding to Env
         var blueprint = JsonReaderMap.From("""
             {
                 "Components": {
@@ -165,12 +164,11 @@ public sealed class BlueprintCompilerTests
         var result = trie.Resolve("/root/Sub/Sub/Sub/Leaf");
         Assert.Same(typeof(MockElement), result.Element.GetType());
         
-        // Assertions
-        Assert.Equal("L5", result.StaticEnv?["Base"].AsString());  // Preserved from bottom
-        Assert.Equal("4", result.StaticEnv?["V4"].AsString());     // Preserved from L4
-        Assert.Equal("3", result.StaticEnv?["V3"].AsString());     // Preserved from L3
-        Assert.Equal("True", result.StaticEnv?["Root"].AsString());// From Mount
-        Assert.Equal("Root", result.StaticEnv?["Deep"].AsString());// Mount overrides EVERYTHING below
+        Assert.Equal("L5", result.StaticEnv?["Base"].AsString());
+        Assert.Equal("4", result.StaticEnv?["V4"].AsString());
+        Assert.Equal("3", result.StaticEnv?["V3"].AsString());
+        Assert.Equal("True", result.StaticEnv?["Root"].AsString());
+        Assert.Equal("Root", result.StaticEnv?["Deep"].AsString());
     }
 
     [Fact]
@@ -189,7 +187,6 @@ public sealed class BlueprintCompilerTests
             }
             """);
 
-        // Should not throw
         compiler.Compile(trie, blueprint);
 
         Assert.Same(typeof(MockElement), trie.Resolve("/valid").Element.GetType());
@@ -211,8 +208,7 @@ public sealed class BlueprintCompilerTests
                 }
             }
             """);
-
-        // Should not throw
+        
         compiler.Compile(trie, blueprint);
 
         Assert.Same(typeof(MockElement), trie.Resolve("/valid").Element.GetType());

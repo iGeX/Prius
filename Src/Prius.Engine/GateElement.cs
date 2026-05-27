@@ -1,5 +1,6 @@
 using Prius.Core.Maps;
 using Prius.Engine.Abstractions;
+using System;
 
 namespace Prius.Engine;
 
@@ -11,7 +12,7 @@ public sealed class GateElement : IElement
         {
             if (value.IsMap)
             {
-                if (!context.Get("@Active").AsBool()) 
+                if (!context.Get("$Active").AsBool()) 
                     return false;
                 
                 var map = value.AsMap();
@@ -21,31 +22,21 @@ public sealed class GateElement : IElement
                 return true;
             }
 
-            if ("@Active".Equals(context.CallerSegment))
-            {
-                context.Put(string.Empty, value);
-                return false;
-            }
-
-            context.Put("@Active", value);
-            return true;
+            return context.Put("$Active", value);
         }
 
-        var state = context.Get("@Active");
+        var state = context.Get("$Active");
         if (!state.AsBool()) 
             return false;
 
-        context.Put(path, value);
-        return true;
+        return context.Put(path, value);
     }
 
     public MapValue Get(IElementContext context, MapPath path)
     {
-        if (!path.IsEmpty) 
-            return context.Get("@Active").AsBool() ? context.Get(path) : new MapValue();
+        if (path.IsEmpty) 
+            return context.Get("$Active").AsBool();
 
-        return "@Active".Equals(context.CallerSegment)
-            ? context.Get(string.Empty)
-            : context.Get("@Active").AsBool();
+        return context.Get("$Active").AsBool() ? context.Get(path) : new MapValue();
     }
 }

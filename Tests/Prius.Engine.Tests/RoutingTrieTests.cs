@@ -1,5 +1,4 @@
 using Prius.Core.Maps;
-using Prius.Engine;
 using Prius.Engine.Abstractions;
 using Xunit;
 
@@ -34,7 +33,7 @@ public sealed class RoutingTrieTests
 
         var result = trie.Resolve("/a/any");
         Assert.Equal("wildcard", ((SpyElement)result.Element).Id);
-        // Deep should still catch deeper paths
+
         var resultDeep = trie.Resolve("/a/any/more");
         Assert.Equal("deep", ((SpyElement)resultDeep.Element).Id);
     }

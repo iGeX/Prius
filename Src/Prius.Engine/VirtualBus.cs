@@ -7,11 +7,6 @@ using System.Threading;
 using Core.Maps;
 using Abstractions;
 
-public static class VirtualBusFactory
-{
-    public static IElementContext Create(RoutingTrie routingTrie) => new VirtualBus(routingTrie);
-}
-
 internal sealed class VirtualBus : IBusContext
 {
     private readonly ConcurrentDictionary<string, IElement> _routeCache = new(StringComparer.Ordinal);

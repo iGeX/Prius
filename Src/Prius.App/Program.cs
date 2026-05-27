@@ -1,25 +1,48 @@
-using System;
+using Prius.App;
 using Prius.Core.Maps;
 using Prius.Engine;
 using Prius.Engine.Abstractions;
 
-class Program
+if (args.Length == 0)
 {
-    static void Main()
-    {
-        var trie = new RoutingTrie();
-        trie.AddRoute("gate/**", new GateElement());
-        IElementContext bus = VirtualBusFactory.Create(trie);
+    Console.WriteLine("Usage: Prius.App.exe <Package/Version> ...");
+    return;
+}
 
-        var stateMap = DictionaryMap.New;
-        stateMap["@state"] = new MapValue(JsonReaderMap.From("{ \"Existing\": true }"));
-        bus["gate"] = new MapValue(stateMap);
+var targets = DictionaryMap.New;
+foreach (var arg in args)
+{
+    var path = (MapPath)arg;
+    if (path.Tail.IsEmpty)
+        continue;
 
-        Console.WriteLine($"[1] Put gate/data: {bus.Put("gate/data", "from_map_state")}");
-        
-        Console.WriteLine($"[2] Put gate 0: {bus.Put("gate", 0)}");
+    targets[path.Head] = path.Tail.ToString();
+}
 
-        Console.WriteLine($"[3] Get gate/@state directly: {bus.Get("gate/@state").AsLong()}");
-        Console.WriteLine($"[4] Put gate/data should fail: {bus.Put("gate/data", "should_fail")}");
-    }
+//TODO: RavenPackageRepository
+IPackageRepository repo = null; //new DirectoryPackageRepository("./packages", new BinaryManager(Path.Combine(Path.GetTempPath(), Path.GetRandomFileName())));
+var metadataRegistry = new JsonMetadataRegistry("routes.json");
+var bootstrap = new Bootstrap(repo, new NativeBootstrapRuntime(), metadataRegistry) 
+{ 
+    StartupTargets = targets 
+};
+
+Console.CancelKeyPress += (_, e) => 
+{
+    e.Cancel = true;
+    Console.WriteLine("[CTRL+C] Shutting down...");
+    bootstrap.Stasis().AsTask().GetAwaiter().GetResult();
+    Environment.Exit(0);
+};
+
+try 
+{
+    await bootstrap.Activate();
+    
+    Console.WriteLine("[SYSTEM] Active. Waiting for signals...");
+    await bootstrap.WaitAsync();
+}
+catch (Exception ex)
+{
+    Console.WriteLine($"[FATAL] {ex.Message}");
 }

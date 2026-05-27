@@ -1,6 +1,4 @@
-using System.Diagnostics;
 using Prius.Core.Maps;
-using Prius.Engine;
 using Prius.Engine.Abstractions;
 using Xunit;
 
@@ -25,12 +23,11 @@ public sealed class VirtualBusStressTests
         var bus = new VirtualBus(new RoutingTrie());
         var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
         
-        var workerCount = 20;
-        var workers = new Task[workerCount];
+        const int WorkerCount = 20;
+        var workers = new Task[WorkerCount];
         var totalRequests = 0L;
-
-        // Start request workers
-        for (int i = 0; i < workerCount; i++)
+        
+        for (var i = 0; i < WorkerCount; i++)
         {
             workers[i] = Task.Run(() => 
             {
@@ -39,10 +36,9 @@ public sealed class VirtualBusStressTests
                     bus.Put("/api/test", true);
                     Interlocked.Increment(ref totalRequests);
                 }
-            });
+            }, TestContext.Current.CancellationToken);
         }
 
-        // Start swapper thread
         var swapCount = 0;
         var swapper = Task.Run(async () => 
         {
@@ -52,16 +48,15 @@ public sealed class VirtualBusStressTests
                 trie.AddRoute("/api/test", new AtomicSpyElement());
                 bus.UpdateTrie(trie);
                 swapCount++;
-                await Task.Delay(10);
+                await Task.Delay(10, cts.Token);
             }
-        });
+        }, TestContext.Current.CancellationToken);
 
         await Task.WhenAll(workers.Concat([swapper]));
 
         Assert.True(totalRequests > 1000, $"Total requests should be high, was {totalRequests}");
         Assert.True(swapCount >= 5, $"Total swaps should be significant, was {swapCount}");
         
-        // Final sanity check - bus should still work
         var finalTrie = new RoutingTrie();
         var finalSpy = new AtomicSpyElement();
         finalTrie.AddRoute("/final", finalSpy);
