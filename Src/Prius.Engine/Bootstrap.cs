@@ -67,7 +67,7 @@ public sealed class Bootstrap
                 var manifest = manifests[pkgId].AsMap();
                 var assets = manifest["Assets"].AsMap();
 
-                Console.WriteLine($"[LOAD] {pkgId} ({manifest.Get("Info/version").AsString()})");
+                Console.WriteLine($"[LOAD] {pkgId} ({manifest.GetDeep("Info/version").AsString()})");
                 
                 await LoadLibs(assets, services);
                 

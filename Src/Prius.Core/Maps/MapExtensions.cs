@@ -345,7 +345,7 @@ public static class MapExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static IMap AsReadOnly(this IMap map) => new ReadOnlyMap(map);
 
-    public static MapValue Get(this IMap map, MapPath path)
+    public static MapValue GetDeep(this IMap map, MapPath path)
     {
         while (true)
         {
@@ -365,9 +365,9 @@ public static class MapExtensions
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static void Put(this IMap map, MapPath path, IMap value) => map.Put(path,  new MapValue(value));
+    public static void DeepPut(this IMap map, MapPath path, IMap value) => map.DeepPut(path,  new MapValue(value));
 
-    public static void Put(this IMap map, MapPath path, MapValue value)
+    public static void DeepPut(this IMap map, MapPath path, MapValue value)
     {
         if (path.IsEmpty) 
             return;
@@ -387,7 +387,7 @@ public static class MapExtensions
                 var targetMap = existing.AsMap();
                 var sourceMap = value.AsMap();
                 foreach (var k in sourceMap.Keys())
-                    targetMap.Put(k, sourceMap[k]);
+                    targetMap.DeepPut(k, sourceMap[k]);
             }
             else
             {
@@ -404,7 +404,7 @@ public static class MapExtensions
             nextValue = map[nextKey];
         }
         
-        nextValue.AsMap().Put(path.Tail, value);
+        nextValue.AsMap().DeepPut(path.Tail, value);
     }
     
     public static int GetSpanHashCode(this ReadOnlySpan<char> span)

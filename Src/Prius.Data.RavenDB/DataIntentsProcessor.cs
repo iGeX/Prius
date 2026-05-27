@@ -314,7 +314,7 @@ public sealed class DataIntentsProcessor(
 
     private async Task HandleStore(StoreIntent i)
     {
-        if (i.Document.Get("@metadata/@collection").IsEmpty)
+        if (i.Document.GetDeep("@metadata/@collection").IsEmpty)
         {
             ReportFailure(i, "No @metadata/@collection specified", "InvalidState");
             return;
@@ -326,8 +326,8 @@ public sealed class DataIntentsProcessor(
         using var session = holder.Store.OpenAsyncSession();
         session.Advanced.UseOptimisticConcurrency = true;
         
-        var changeVector = i.Document.Get("@metadata/@change-vector").AsString();
-        var command = new PutCommandData(i.Document.Get("@metadata/@id").AsString(), changeVector, i.Document.AsDynamicJson());
+        var changeVector = i.Document.GetDeep("@metadata/@change-vector").AsString();
+        var command = new PutCommandData(i.Document.GetDeep("@metadata/@id").AsString(), changeVector, i.Document.AsDynamicJson());
         session.Advanced.Defer(command);
         
         await session.SaveChangesAsync(i.Token);

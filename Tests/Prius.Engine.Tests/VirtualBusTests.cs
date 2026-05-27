@@ -179,6 +179,105 @@ public sealed class VirtualBusTests
 
         Assert.True(spy.WasExecuted);
     }
+
+    [Fact]
+    public void UpdateTrie_ShouldClearCacheAndUseNewTrie()
+    {
+        var trie1 = new RoutingTrie();
+        var spy1 = new SpyElement();
+        trie1.AddRoute("test/path", spy1);
+        
+        var bus = new VirtualBus(trie1);
+        
+        // Execute to fill cache
+        bus.Put("test/path", 1);
+        Assert.True(spy1.WasExecuted);
+        spy1.Reset();
+
+        var trie2 = new RoutingTrie();
+        var spy2 = new SpyElement();
+        trie2.AddRoute("test/path", spy2); // Same path, different element
+
+        bus.UpdateTrie(trie2);
+
+        // Execute again
+        bus.Put("test/path", 2);
+        
+        Assert.False(spy1.WasExecuted);
+        Assert.True(spy2.WasExecuted);
+    }
+
+    [Fact]
+    public void Concurrency_ParallelWritesToIndependentPaths_ShouldSucceed()
+    {
+        var bus = new VirtualBus(new RoutingTrie());
+        const int Iterations = 1000;
+
+        Parallel.For(0, Iterations, i =>
+        {
+            bus.Put($"path/{i}", i);
+        });
+
+        for (var i = 0; i < Iterations; i++)
+            Assert.Equal(i, bus.Get($"path/{i}").AsInt());
+    }
+
+    [Fact]
+    public void Concurrency_ConcurrentWritesToSameNode_ShouldNotCorruptMemory()
+    {
+        var bus = new VirtualBus(new RoutingTrie());
+        const int Iterations = 500;
+        const string Path = "shared/node";
+
+        Parallel.For(0, Iterations, i =>
+        {
+            bus.Put($"{Path}/key_{i}", i);
+        });
+
+        var resultNode = bus.Get(Path);
+        Assert.True(resultNode.IsMap);
+        var map = resultNode.AsMap();
+        
+        for (var i = 0; i < Iterations; i++)
+        {
+            Assert.Equal(i, map[$"key_{i}"].AsInt());
+        }
+    }
+
+    [Fact]
+    public void Reentrancy_ElementCallingItself_ShouldNotDeadlock()
+    {
+        var trie = new RoutingTrie();
+        var reentrantElement = new ReentrantElement();
+        trie.AddRoute("reentrant/**", reentrantElement);
+        var bus = new VirtualBus(trie);
+
+        // This will call reentrantElement.Put("reentrant/start")
+        // which will then call context.Put("start/sub", 123) 
+        bus.Put("reentrant/start", "trigger");
+
+        Assert.Equal(123L, bus.Get("reentrant/start/sub").AsLong());
+        Assert.Equal(2, reentrantElement.CallCount);
+    }
+}
+
+public sealed class ReentrantElement : IElement
+{
+    public int CallCount;
+    public bool Put(IElementContext context, MapPath path, MapValue value)
+    {
+        CallCount++;
+        if (value.AsString() == "trigger") 
+            return context.Put(path + "sub", 123);
+
+        var map = DictionaryMap.New;
+        map.DeepPut(path, value);
+        context.Put(string.Empty, new MapValue(map));
+        return true;
+    }
+
+    public MapValue Get(IElementContext context, MapPath path) => 
+        context.Get(string.Empty).AsMap().GetDeep(path);
 }
 
 public sealed class SpyElement : IElement

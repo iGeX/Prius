@@ -205,7 +205,7 @@ public sealed class RavenPackageRepositoryTests : RavenTestDriver
         var targetPackageManifest = manifests[PackageId].AsMap();
         Assert.NotNull(targetPackageManifest);
         
-        var filteredDeps = targetPackageManifest.Get(new MapPath("Dependencies".AsSpan())).AsMap();
+        var filteredDeps = targetPackageManifest.GetDeep(new MapPath("Dependencies".AsSpan())).AsMap();
         
         Assert.True(filteredDeps.ContainsKey("net8.0"));
         Assert.False(filteredDeps.ContainsKey("any"));
@@ -252,7 +252,7 @@ public sealed class RavenPackageRepositoryTests : RavenTestDriver
         requestPackages[PackageId] = VersionStr;
 
         var manifests = await repo.GetManifests("net10.0", requestPackages, TestContext.Current.CancellationToken);
-        var filteredDeps = manifests[PackageId].AsMap().Get(new MapPath("Dependencies".AsSpan())).AsMap();
+        var filteredDeps = manifests[PackageId].AsMap().GetDeep(new MapPath("Dependencies".AsSpan())).AsMap();
         
         Assert.True(filteredDeps.ContainsKey("any"));
         Assert.False(filteredDeps.ContainsKey("net10.0"));
@@ -391,7 +391,7 @@ public sealed class RavenPackageRepositoryTests : RavenTestDriver
         var cachedManifest = secondResult[PackageId].AsMap();
 
         Assert.NotNull(cachedManifest);
-        Assert.Equal(PackageId, cachedManifest.Get(new MapPath("Info/id".AsSpan())).AsString());
+        Assert.Equal(PackageId, cachedManifest.GetDeep(new MapPath("Info/id".AsSpan())).AsString());
     }
     
     [Fact]
@@ -474,7 +474,7 @@ public sealed class RavenPackageRepositoryTests : RavenTestDriver
         requestPackages[PackageId] = VersionStr;
         
         var manifests = await repo.GetManifests("net10.0", requestPackages, TestContext.Current.CancellationToken);
-        var filteredDeps = manifests[PackageId].AsMap().Get(new MapPath("Dependencies".AsSpan())).AsMap();
+        var filteredDeps = manifests[PackageId].AsMap().GetDeep(new MapPath("Dependencies".AsSpan())).AsMap();
 
         Assert.True(filteredDeps.ContainsKey("net10.0"));
         Assert.False(filteredDeps.ContainsKey("netstandard2.0"));
@@ -562,11 +562,11 @@ public sealed class RavenPackageRepositoryTests : RavenTestDriver
         requestPackages[PackageId] = VersionStr;
         
         var call1 = await repo.GetManifests("net10.0", requestPackages, TestContext.Current.CancellationToken);
-        var deps1 = call1[PackageId].AsMap().Get(new MapPath("Dependencies".AsSpan())).AsMap();
+        var deps1 = call1[PackageId].AsMap().GetDeep(new MapPath("Dependencies".AsSpan())).AsMap();
         Assert.True(deps1.ContainsKey("net10.0"));
         
         var call2 = await repo.GetManifests("net8.0", requestPackages, TestContext.Current.CancellationToken);
-        var deps2 = call2[PackageId].AsMap().Get(new MapPath("Dependencies".AsSpan())).AsMap();
+        var deps2 = call2[PackageId].AsMap().GetDeep(new MapPath("Dependencies".AsSpan())).AsMap();
         
         Assert.True(deps2.ContainsKey("net8.0"));
         Assert.False(deps2.ContainsKey("net10.0"));
@@ -664,11 +664,11 @@ public sealed class RavenPackageRepositoryTests : RavenTestDriver
         requestPackages[PackageId] = VersionStr;
         
         var call1 = await repo.GetManifests("net10.0", requestPackages, TestContext.Current.CancellationToken);
-        var deps1 = call1[PackageId].AsMap().Get(new MapPath("Dependencies".AsSpan())).AsMap();
+        var deps1 = call1[PackageId].AsMap().GetDeep(new MapPath("Dependencies".AsSpan())).AsMap();
         Assert.True(deps1.ContainsKey("net10.0"));
         
         var call2 = await repo.GetManifests("net8.0", requestPackages, TestContext.Current.CancellationToken);
-        var deps2 = call2[PackageId].AsMap().Get(new MapPath("Dependencies".AsSpan())).AsMap();
+        var deps2 = call2[PackageId].AsMap().GetDeep(new MapPath("Dependencies".AsSpan())).AsMap();
 
         Assert.True(deps2.ContainsKey("net8.0"));
         Assert.False(deps2.ContainsKey("net10.0"));
@@ -783,8 +783,8 @@ public sealed class RavenPackageRepositoryTests : RavenTestDriver
         var manifest = manifests[PackageId].AsMap();
         
         Assert.NotNull(manifest);
-        Assert.Equal(PackageId, manifest.Get(new MapPath("Info/id".AsSpan())).ToString());
-        Assert.True(manifest.Get(new MapPath("Dependencies".AsSpan())).IsEmpty);
+        Assert.Equal(PackageId, manifest.GetDeep(new MapPath("Info/id".AsSpan())).ToString());
+        Assert.True(manifest.GetDeep(new MapPath("Dependencies".AsSpan())).IsEmpty);
     }
 
     [Fact]

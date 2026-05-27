@@ -29,8 +29,8 @@ public sealed class ElementContext : IBusContext
     private readonly int _depth;
     
     int IBusContext.Depth => _depth;
-    IElement? IBusContext.Owner => _owner;
     IMap IBusContext.Node => _node;
+    IElement? IBusContext.Owner => _owner;
     IMap? IBusContext.ParentNode => _parentNode;
     RoutingNode IBusContext.MountNode => _mountNode;
     IMap? IBusContext.StaticEnv => _staticEnv;

@@ -11,7 +11,7 @@ internal sealed class VirtualBus : IBusContext
 {
     private readonly ConcurrentDictionary<string, IElement> _routeCache = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, IElement>.AlternateLookup<ReadOnlySpan<char>> _cacheLookup;
-    private readonly ConcurrentDictionary<string, object> _nodeLocks = new(StringComparer.Ordinal);
+    private readonly Lock _syncRoot = new();
     
     private RoutingTrie _routingTrie;
     private readonly DictionaryMap _memoryRoot = DictionaryMap.New;
@@ -24,11 +24,12 @@ internal sealed class VirtualBus : IBusContext
 
     public void UpdateTrie(RoutingTrie trie)
     {
-        _routingTrie = trie;
+        lock (_syncRoot)
+            _routingTrie = trie;
         ClearCache();
     }
 
-    public const int MaxDispatchDepth = 128;
+    private const int MaxDispatchDepth = 128;
 
     public string AbsolutePath => string.Empty;
     public string CallerSegment => string.Empty;
@@ -52,10 +53,7 @@ internal sealed class VirtualBus : IBusContext
         if (caller.Depth >= MaxDispatchDepth)
             throw new InvalidOperationException("Maximum dispatch depth exceeded.");
 
-        var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
-        var nodeLock = _nodeLocks.GetOrAdd(absolutePathString, _ => new object());
-        
-        lock (nodeLock)
+        lock (_syncRoot)
         {
             if (relativePath.IsEmpty)
             {
@@ -74,6 +72,7 @@ internal sealed class VirtualBus : IBusContext
                 return false;
             }
 
+            var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
             CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Element);
 
             var mountPathStr = GetMountPath(absolutePathString, resolveResult.RemainingPath);
@@ -96,7 +95,7 @@ internal sealed class VirtualBus : IBusContext
             if (caller.ParentNode != null)
             {
                 if (value.IsMap)
-                    caller.ParentNode.Put(new MapPath(new MapPath(caller.CallerSegment).LastSegment), value);
+                    caller.ParentNode.DeepPut(new MapPath(new MapPath(caller.CallerSegment).LastSegment), value);
                 else
                     caller.ParentNode[new MapPath(caller.CallerSegment).LastSegment] = value;
             }
@@ -105,11 +104,11 @@ internal sealed class VirtualBus : IBusContext
                 var targetMap = caller.Node;
                 var sourceMap = value.AsMap();
                 foreach (var k in sourceMap.Keys())
-                    targetMap.Put(k, sourceMap[k]);
+                    targetMap.DeepPut(k, sourceMap[k]);
             }
         }
         else
-            caller.Node.Put(relativePath, value);
+            caller.Node.DeepPut(relativePath, value);
     }
 
     internal MapValue DispatchGet(IBusContext caller, MapPath relativePath, IMap? envPatch)
@@ -117,10 +116,7 @@ internal sealed class VirtualBus : IBusContext
         if (caller.Depth >= MaxDispatchDepth)
             throw new InvalidOperationException("Maximum dispatch depth exceeded.");
 
-        var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
-        var nodeLock = _nodeLocks.GetOrAdd(absolutePathString, _ => new object());
-        
-        lock (nodeLock)
+        lock (_syncRoot)
         {
             if(relativePath.IsEmpty)
                 return ReadFromMemory(caller, relativePath);
@@ -133,6 +129,7 @@ internal sealed class VirtualBus : IBusContext
             if (resolveResult.Element is EmptyElement)
                 return ReadFromMemory(caller, relativePath);
 
+            var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
             CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Element);
 
             var mountPathStr = GetMountPath(absolutePathString, resolveResult.RemainingPath);
@@ -152,7 +149,7 @@ internal sealed class VirtualBus : IBusContext
     {
         if (relativePath.IsEmpty && caller.ParentNode != null)
             return caller.ParentNode[new MapPath(caller.CallerSegment).LastSegment];
-        return caller.Node.Get(relativePath);
+        return caller.Node.GetDeep(relativePath);
     }
 
     private static string GetMountPath(string fullPath, MapPath remainingPath)
