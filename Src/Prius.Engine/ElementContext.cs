@@ -7,8 +7,10 @@ using Abstractions;
 
 internal interface IBusContext : IElementContext
 {
+    int Depth { get; }
     IElement? Owner { get; }
     IMap Node { get; }
+    IMap? ParentNode { get; }
     RoutingNode MountNode { get; }
     IMap? StaticEnv { get; }
     MatchType MatchType { get; }
@@ -22,12 +24,16 @@ public sealed class ElementContext : IBusContext
     private readonly IMap? _staticEnv;
     private readonly IElement? _owner;
     private readonly IMap _node;
+    private readonly IMap? _parentNode;
     private readonly RoutingNode _mountNode;
     private readonly MatchType _matchType;
     private readonly bool _isUnrolled;
+    private readonly int _depth;
     
+    int IBusContext.Depth => _depth;
     IElement? IBusContext.Owner => _owner;
     IMap IBusContext.Node => _node;
+    IMap? IBusContext.ParentNode => _parentNode;
     RoutingNode IBusContext.MountNode => _mountNode;
     IMap? IBusContext.StaticEnv => _staticEnv;
     MatchType IBusContext.MatchType => _matchType;
@@ -45,12 +51,14 @@ public sealed class ElementContext : IBusContext
         VirtualBus bus,
         IElement? owner,
         IElementContext? parent, 
+        int depth,
         string callerSegment, 
         string absolutePath, 
         string key, 
         IMap? envPatch,
         IMap? staticEnv,
         IMap node,
+        IMap? parentNode,
         RoutingNode mountNode,
         MatchType matchType,
         bool isUnrolled)
@@ -58,12 +66,14 @@ public sealed class ElementContext : IBusContext
         _bus = bus;
         _owner = owner;
         Parent = parent;
+        _depth = depth;
         CallerSegment = callerSegment;
         AbsolutePath = absolutePath;
         Key = key;
         _envPatch = envPatch is not null && !envPatch.IsEmpty ? envPatch : null;
         _staticEnv = staticEnv is not null && !staticEnv.IsEmpty ? staticEnv : null;
         _node = node;
+        _parentNode = parentNode;
         _mountNode = mountNode;
         _matchType = matchType;
         _isUnrolled = isUnrolled;

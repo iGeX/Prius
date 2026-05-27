@@ -33,12 +33,16 @@ internal sealed class VirtualBus : IBusContext
         ClearCache();
     }
 
+    public const int MaxDispatchDepth = 128;
+
     public string AbsolutePath => string.Empty;
     public string CallerSegment => string.Empty;
     public string Key => string.Empty;
 
+    public int Depth => 0;
     public IElement? Owner => null;
     public IMap Node => _memoryRoot;
+    public IMap? ParentNode => null;
     public RoutingNode MountNode => _routingTrie.Root;
     public IMap? StaticEnv => null;
     public MatchType MatchType => MatchType.None;
@@ -52,6 +56,9 @@ internal sealed class VirtualBus : IBusContext
 
     internal bool DispatchPut(IBusContext caller, MapPath relativePath, MapValue value, IMap? envPatch)
     {
+        if (caller.Depth >= MaxDispatchDepth)
+            throw new InvalidOperationException("Maximum dispatch depth exceeded.");
+
         var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
         var nodeLock = _nodeLocks.GetOrAdd(absolutePathString, _ => new object());
         
@@ -62,9 +69,19 @@ internal sealed class VirtualBus : IBusContext
 
             var resolveResult = _routingTrie.ResolveScoped(caller.MountNode, relativePath, initialFallback, initialFallbackEnv);
             
-            if (resolveResult.Element is EmptyElement)
+            if (resolveResult.Element is EmptyElement || resolveResult.Element == initialFallback)
             {
-                caller.Node.Put(relativePath, value);
+                if (relativePath.IsEmpty && caller.ParentNode != null)
+                {
+                    if (value.IsMap)
+                        caller.ParentNode.Put(new MapPath(caller.Key), value);
+                    else
+                        caller.ParentNode[caller.Key] = value;
+                }
+                else if (!relativePath.IsEmpty)
+                {
+                    caller.Node.Put(relativePath, value);
+                }
                 return false;
             }
 
@@ -73,13 +90,14 @@ internal sealed class VirtualBus : IBusContext
             var mountPathStr = GetMountPath(absolutePathString, resolveResult.RemainingPath);
             var mountRelativePathStr = GetMountPath(relativePath.ToString(), resolveResult.RemainingPath);
             
-            var memoryMap = FindOrCreateMemoryMap(caller.Node, new MapPath(mountRelativePathStr.AsSpan()));
+            var memoryMaps = FindOrCreateMemoryMap(caller.Node, new MapPath(mountRelativePathStr.AsSpan()));
+            var parentMap = memoryMaps.Parent ?? caller.ParentNode;
             
             var isUnrolled = resolveResult.Element == initialFallback;
             var elementKey = string.IsNullOrEmpty(resolveResult.ElementKey) ? caller.Key : resolveResult.ElementKey;
             var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).Head;
 
-            var subContext = new ElementContext(this, resolveResult.Element, caller, callerSegment, mountPathStr, elementKey, envPatch, resolveResult.StaticEnv, memoryMap, resolveResult.MatchNode, resolveResult.MatchType, isUnrolled);
+            var subContext = new ElementContext(this, resolveResult.Element, caller, caller.Depth + 1, callerSegment, mountPathStr, elementKey, envPatch, resolveResult.StaticEnv, memoryMaps.Current, parentMap, resolveResult.MatchNode, resolveResult.MatchType, isUnrolled);
 
             return resolveResult.Element.Put(subContext, resolveResult.RemainingPath, value);
         }
@@ -87,6 +105,9 @@ internal sealed class VirtualBus : IBusContext
 
     internal MapValue DispatchGet(IBusContext caller, MapPath relativePath, IMap? envPatch)
     {
+        if (caller.Depth >= MaxDispatchDepth)
+            throw new InvalidOperationException("Maximum dispatch depth exceeded.");
+
         var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
         if (string.IsNullOrEmpty(absolutePathString)) 
             return new MapValue();
@@ -100,21 +121,26 @@ internal sealed class VirtualBus : IBusContext
 
             var resolveResult = _routingTrie.ResolveScoped(caller.MountNode, relativePath, initialFallback, initialFallbackEnv);
             
-            if (resolveResult.Element is EmptyElement) 
+            if (resolveResult.Element is EmptyElement || resolveResult.Element == initialFallback) 
+            {
+                if (relativePath.IsEmpty && caller.ParentNode != null)
+                    return caller.ParentNode[caller.Key];
                 return caller.Node.Get(relativePath);
+            }
 
             CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Element);
 
             var mountPathStr = GetMountPath(absolutePathString, resolveResult.RemainingPath);
             var mountRelativePathStr = GetMountPath(relativePath.ToString(), resolveResult.RemainingPath);
             
-            var memoryMap = FindOrCreateMemoryMap(caller.Node, new MapPath(mountRelativePathStr.AsSpan()));
+            var memoryMaps = FindOrCreateMemoryMap(caller.Node, new MapPath(mountRelativePathStr.AsSpan()));
+            var parentMap = memoryMaps.Parent ?? caller.ParentNode;
             
             var isUnrolled = resolveResult.Element == initialFallback;
             var elementKey = string.IsNullOrEmpty(resolveResult.ElementKey) ? caller.Key : resolveResult.ElementKey;
             var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).Head;
 
-            var subContext = new ElementContext(this, resolveResult.Element, caller, callerSegment, mountPathStr, elementKey, envPatch, resolveResult.StaticEnv, memoryMap, resolveResult.MatchNode, resolveResult.MatchType, isUnrolled);
+            var subContext = new ElementContext(this, resolveResult.Element, caller, caller.Depth + 1, callerSegment, mountPathStr, elementKey, envPatch, resolveResult.StaticEnv, memoryMaps.Current, parentMap, resolveResult.MatchNode, resolveResult.MatchType, isUnrolled);
 
             return resolveResult.Element.Get(subContext, resolveResult.RemainingPath);
         }
@@ -129,8 +155,11 @@ internal sealed class VirtualBus : IBusContext
         return fullPath.Substring(0, keepLength);
     }
 
-    private static IMap FindOrCreateMemoryMap(IMap startMap, MapPath path)
+    private static (IMap? Parent, IMap Current) FindOrCreateMemoryMap(IMap startMap, MapPath path)
     {
+        if (path.IsEmpty) return (null, startMap);
+
+        IMap? parent = null;
         var current = startMap;
         while (!path.IsEmpty)
         {
@@ -140,10 +169,11 @@ internal sealed class VirtualBus : IBusContext
                 current[path.Head] = new MapValue(DictionaryMap.New);
                 next = current[path.Head];
             }
+            parent = current;
             current = next.AsMap();
             path = path.Tail;
         }
-        return current;
+        return (parent, current);
     }
 
     public void PutAbsolute(MapPath absolutePath, MapValue value)

@@ -7,11 +7,11 @@ namespace Prius.Engine.Tests;
 
 public sealed class GateElementTests
 {
-    private VirtualBus CreateBus(GateElement gate, string path)
+    private IElementContext CreateBus(GateElement gate, string path)
     {
         var trie = new RoutingTrie();
         trie.AddRoute(path, gate);
-        return new VirtualBus(trie);
+        return VirtualBusFactory.Create(trie);
     }
 
     [Fact]

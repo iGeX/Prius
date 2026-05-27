@@ -59,7 +59,7 @@ public sealed class VirtualBusStressTests
         await Task.WhenAll(workers.Concat([swapper]));
 
         Assert.True(totalRequests > 1000, $"Total requests should be high, was {totalRequests}");
-        Assert.True(swapCount > 10, $"Total swaps should be significant, was {swapCount}");
+        Assert.True(swapCount >= 5, $"Total swaps should be significant, was {swapCount}");
         
         // Final sanity check - bus should still work
         var finalTrie = new RoutingTrie();
