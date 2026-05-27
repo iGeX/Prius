@@ -8,8 +8,6 @@ public interface IElementContext : IMap
     
     string CallerSegment { get; }
     
-    string Key { get; }
-    
     bool Put(MapPath path, MapValue value, IMap? envPatch = null);
     
     MapValue Get(MapPath path, IMap? envPatch = null);

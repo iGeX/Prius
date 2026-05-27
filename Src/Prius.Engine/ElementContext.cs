@@ -9,6 +9,7 @@ internal interface IBusContext : IElementContext
 {
     int Depth { get; }
     IElement? Owner { get; }
+    string ElementKey { get; }
     IMap Node { get; }
     IMap? ParentNode { get; }
     RoutingNode MountNode { get; }
@@ -29,9 +30,11 @@ public sealed class ElementContext : IBusContext
     private readonly MatchType _matchType;
     private readonly bool _isUnrolled;
     private readonly int _depth;
+    private readonly string _elementKey;
     
     int IBusContext.Depth => _depth;
     IElement? IBusContext.Owner => _owner;
+    string IBusContext.ElementKey => _elementKey;
     IMap IBusContext.Node => _node;
     IMap? IBusContext.ParentNode => _parentNode;
     RoutingNode IBusContext.MountNode => _mountNode;
@@ -42,7 +45,6 @@ public sealed class ElementContext : IBusContext
     
     public string AbsolutePath { get; }
     public string CallerSegment { get; }
-    public string Key { get; }
     
     public bool IsEmpty => (_envPatch is null || _envPatch.IsEmpty) && (_staticEnv is null || _staticEnv.IsEmpty) && (Parent is null || Parent.IsEmpty);
     public bool CanWrite => false;
@@ -54,7 +56,7 @@ public sealed class ElementContext : IBusContext
         int depth,
         string callerSegment, 
         string absolutePath, 
-        string key, 
+        string elementKey, 
         IMap? envPatch,
         IMap? staticEnv,
         IMap node,
@@ -69,7 +71,7 @@ public sealed class ElementContext : IBusContext
         _depth = depth;
         CallerSegment = callerSegment;
         AbsolutePath = absolutePath;
-        Key = key;
+        _elementKey = elementKey;
         _envPatch = envPatch is not null && !envPatch.IsEmpty ? envPatch : null;
         _staticEnv = staticEnv is not null && !staticEnv.IsEmpty ? staticEnv : null;
         _node = node;

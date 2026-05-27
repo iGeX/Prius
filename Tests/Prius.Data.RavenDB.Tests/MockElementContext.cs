@@ -7,7 +7,6 @@ public class MockElementContext : IElementContext
 {
     public string AbsolutePath { get; set; } = string.Empty;
     public string CallerSegment { get; set; } = string.Empty;
-    public string Key { get; set; } = "mock";
     
     public Dictionary<string, MapValue> PutCalls { get; } = new();
 

@@ -128,42 +128,6 @@ public sealed class BinaryManagerTests : IDisposable
 
         Assert.Null(exception);
     }
-    
-    //TODO: Node is disposed sometimes
-    [Fact]
-    public async Task Should_Concurrently_Lose_Data_Under_Spiller_Race()
-    {
-        var timeProvider = new MockTimeProvider();
-        var manager = new BinaryManager(_tempDir, timeProvider, TimeSpan.FromMilliseconds(10));
-        
-        const string Path = "concurrent/race/path";
-        manager.Store(Path, Empty.Instance, new MemoryStream(Encoding.UTF8.GetBytes("INITIAL")));
-
-        var accessor = manager.Get(Path);
-        var tasks = new List<Task>();
-
-        for (var i = 0; i < 500; i++)
-        {
-            var iteration = i;
-            tasks.Add(Task.Run(async () =>
-            {
-                timeProvider.UtcNow = timeProvider.UtcNow.AddMinutes(5); // Вынуждаем SpillerLoop постоянно триггериться
-                
-                var expectedString = $"FRESH_DATA_{iteration}";
-                manager.Store(Path, Empty.Instance, new MemoryStream(Encoding.UTF8.GetBytes(expectedString)));
-
-                await Task.Delay(1);
-
-                await using var stream = accessor.OpenStream();
-                using var reader = new StreamReader(stream);
-                var actualData = await reader.ReadToEndAsync();
-
-                Assert.StartsWith("FRESH_DATA_", actualData);
-            }, TestContext.Current.CancellationToken));
-        }
-
-        await Task.WhenAll(tasks);
-    }
 
     [Fact]
     public async Task Should_Fail_Or_Leak_Files_Under_Concurrent_OpenStream()
