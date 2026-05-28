@@ -40,7 +40,7 @@ public sealed class ElementContext : IBusContext
     public string AbsolutePath { get; }
     public string CallerSegment { get; }
     
-    public bool IsEmpty => (_envPatch is null || _envPatch.IsEmpty) && (_staticEnv is null || _staticEnv.IsEmpty) && (Parent is null || Parent.IsEmpty);
+    public bool IsEmpty => (_envPatch is null || _envPatch.IsEmpty) && (_staticEnv is null || _staticEnv.IsEmpty) && (Parent is not ElementContext ctx || ctx.IsEmpty);
     public bool CanWrite => false;
 
     internal ElementContext(

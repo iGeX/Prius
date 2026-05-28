@@ -35,7 +35,7 @@ public sealed class DictionaryMap(IDictionary dictionary) : IMap
         get => _dictionary[key].AsMapValue();
         set => value.Switch(
             onEmpty: _ => _dictionary.Remove(key),
-            onMap: map => _dictionary[key] = map.DeepCopy(),
+            onMap: map => _dictionary[key] = map,
             onString: val => _dictionary[key] = val,
             onLong: val => _dictionary[key] = val,
             onBool: val => _dictionary[key] = val,

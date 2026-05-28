@@ -42,7 +42,7 @@ public sealed class ListMap(IList list) : IMap
 
             value.Switch(
                 _ => _list[index] = null,
-                map => _list[index] = map.DeepCopy(),
+                map => _list[index] = map,
                 val => _list[index] = val
             );
         }

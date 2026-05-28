@@ -81,7 +81,7 @@ internal sealed class VirtualBus : IBusContext
             var memoryMaps = FindOrCreateMemoryMap(caller.Node, new MapPath(mountRelativePathStr.AsSpan()));
             var parentMap = memoryMaps.Parent ?? caller.ParentNode;
             
-            var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).Head;
+            var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? (caller as ElementContext)?.CallerSegment ?? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).LastSegment;
             var subContext = new ElementContext(this, resolveResult.Element, caller, caller.Depth + 1, callerSegment, mountPathStr, envPatch, resolveResult.StaticEnv, memoryMaps.Current, parentMap, resolveResult.MatchNode, resolveResult.MatchType);
 
             return resolveResult.Element.Put(subContext, resolveResult.RemainingPath, value);
@@ -94,10 +94,8 @@ internal sealed class VirtualBus : IBusContext
         {
             if (caller.ParentNode != null)
             {
-                if (value.IsMap)
-                    caller.ParentNode.DeepPut(new MapPath(new MapPath(caller.CallerSegment).LastSegment), value);
-                else
-                    caller.ParentNode[new MapPath(caller.CallerSegment).LastSegment] = value;
+                var segment = new MapPath(caller.CallerSegment).LastSegment;
+                caller.ParentNode.DeepPut(new MapPath(segment), value);
             }
             else if (value.IsMap)
             {
@@ -108,7 +106,9 @@ internal sealed class VirtualBus : IBusContext
             }
         }
         else
+        {
             caller.Node.DeepPut(relativePath, value);
+        }
     }
 
     internal MapValue DispatchGet(IBusContext caller, MapPath relativePath, IMap? envPatch)
@@ -138,10 +138,11 @@ internal sealed class VirtualBus : IBusContext
             var memoryMaps = FindOrCreateMemoryMap(caller.Node, new MapPath(mountRelativePathStr.AsSpan()));
             var parentMap = memoryMaps.Parent ?? caller.ParentNode;
             
-            var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).Head;
+            var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? (caller as ElementContext)?.CallerSegment ?? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).LastSegment;
             var subContext = new ElementContext(this, resolveResult.Element, caller, caller.Depth + 1, callerSegment, mountPathStr, envPatch, resolveResult.StaticEnv, memoryMaps.Current, parentMap, resolveResult.MatchNode, resolveResult.MatchType);
 
-            return resolveResult.Element.Get(subContext, resolveResult.RemainingPath);
+            var result = resolveResult.Element.Get(subContext, resolveResult.RemainingPath);
+            return result.IsEmpty ? ReadFromMemory(caller, relativePath) : result;
         }
     }
 

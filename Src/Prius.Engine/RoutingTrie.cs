@@ -118,9 +118,6 @@ public sealed class RoutingTrie
 
             if (fallbackElement != null)
             {
-                if (fallbackDepth == 0) 
-                    return new ResolveResult(fallbackElement, originalPath.Tail, originalPath.Head, fallbackStaticEnv, fallbackNode, MatchType.DeepWildcard);
-                
                 return new ResolveResult(fallbackElement, SlicePath(originalPath, fallbackDepth), fallbackKey, fallbackStaticEnv, fallbackNode, MatchType.DeepWildcard);
             }
 
@@ -135,9 +132,6 @@ public sealed class RoutingTrie
 
         if (fallbackElement != null)
         {
-            if (fallbackDepth == 0) 
-                return new ResolveResult(fallbackElement, originalPath.Tail, originalPath.Head, fallbackStaticEnv, fallbackNode, MatchType.DeepWildcard);
-            
             return new ResolveResult(fallbackElement, SlicePath(originalPath, fallbackDepth), fallbackKey, fallbackStaticEnv, fallbackNode, MatchType.DeepWildcard);
         }
 
