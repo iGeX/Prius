@@ -189,18 +189,16 @@ public sealed class VirtualBusTests
         
         var bus = new VirtualBus(trie1);
         
-        // Execute to fill cache
         bus.Put("test/path", 1);
         Assert.True(spy1.WasExecuted);
         spy1.Reset();
 
         var trie2 = new RoutingTrie();
         var spy2 = new SpyElement();
-        trie2.AddRoute("test/path", spy2); // Same path, different element
+        trie2.AddRoute("test/path", spy2);
 
         bus.UpdateTrie(trie2);
-
-        // Execute again
+        
         bus.Put("test/path", 2);
         
         Assert.False(spy1.WasExecuted);
@@ -239,9 +237,7 @@ public sealed class VirtualBusTests
         var map = resultNode.AsMap();
         
         for (var i = 0; i < Iterations; i++)
-        {
             Assert.Equal(i, map[$"key_{i}"].AsInt());
-        }
     }
 
     [Fact]
@@ -251,9 +247,7 @@ public sealed class VirtualBusTests
         var reentrantElement = new ReentrantElement();
         trie.AddRoute("reentrant/**", reentrantElement);
         var bus = new VirtualBus(trie);
-
-        // This will call reentrantElement.Put("reentrant/start")
-        // which will then call context.Put("start/sub", 123) 
+        
         bus.Put("reentrant/start", "trigger");
 
         Assert.Equal(123L, bus.Get("reentrant/start/sub").AsLong());
@@ -277,7 +271,7 @@ public sealed class ReentrantElement : IElement
     }
 
     public MapValue Get(IElementContext context, MapPath path) => 
-        context.Get(string.Empty).AsMap().GetDeep(path);
+        context.Get(string.Empty).AsMap().DeepGet(path);
 }
 
 public sealed class SpyElement : IElement

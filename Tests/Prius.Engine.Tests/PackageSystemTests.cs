@@ -24,7 +24,7 @@ public sealed class PackageSystemTests
 
         // Act
         var importedMap = PackageImporter.Import(sourceStream);
-        var dllHash = importedMap.GetDeep("Assets/lib/net10.0/Prius.Base.dll/hash").AsString();
+        var dllHash = importedMap.DeepGet("Assets/lib/net10.0/Prius.Base.dll/hash").AsString();
         repo.AddPackage(importedMap, new Dictionary<string, byte[]> { [dllHash] = Encoding.UTF8.GetBytes(Content) });
         
         using var outputStream = new MemoryStream();
@@ -67,7 +67,7 @@ public sealed class PackageSystemTests
 
         // Assert
         Assert.Equal("Common", order["0"].AsString());
-        Assert.Equal("2.0.0", manifests.GetDeep("Common/Info/version").AsString());
+        Assert.Equal("2.0.0", manifests.DeepGet("Common/Info/version").AsString());
         Assert.Equal(3, order.Keys().Count());
     }
 

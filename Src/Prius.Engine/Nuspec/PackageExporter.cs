@@ -18,7 +18,7 @@ public static class PackageExporter
     {
         await using var archive = new ZipArchive(outputStream, ZipArchiveMode.Create, true);
         
-        var nuspecEntry = archive.CreateEntry($"{manifest.GetDeep("Info/id")}.nuspec");
+        var nuspecEntry = archive.CreateEntry($"{manifest.DeepGet("Info/id")}.nuspec");
         await using (var writer = new StreamWriter(await nuspecEntry.OpenAsync(ct)))
             await writer.WriteAsync(GenerateNuspec(manifest));
         

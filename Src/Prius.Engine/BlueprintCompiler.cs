@@ -4,7 +4,7 @@ using Prius.Engine.Abstractions;
 
 namespace Prius.Engine;
 
-public sealed class BlueprintCompiler(IServiceProvider serviceProvider, Func<string, Type?> typeResolver)
+internal sealed class BlueprintCompiler(IServiceProvider serviceProvider, Func<string, Type?> typeResolver)
 {
     public void Compile(RoutingTrie trie, IMap blueprint)
     {
@@ -34,28 +34,28 @@ public sealed class BlueprintCompiler(IServiceProvider serviceProvider, Func<str
             return;
         }
 
-        if (node.ContainsKey("Component"))
+        if (!node.ContainsKey("Component"))
+            return;
+        
+        var componentName = node["Component"].AsString();
+
+        if (stack.Contains(componentName))
         {
-            var componentName = node["Component"].AsString();
-
-            if (stack.Contains(componentName))
-            {
-                Console.WriteLine($"[ERROR] Circular component dependency detected: {string.Join(" -> ", stack)} -> {componentName}");
-                return;
-            }
-
-            var component = components[componentName].AsMap();
-            if (component.IsEmpty)
-            {
-                Console.WriteLine($"[WARNING] Component '{componentName}' not found.");
-                return;
-            }
-
-            var nextStack = new HashSet<string>(stack, StringComparer.Ordinal) { componentName };
-            var routes = component["Routes"].AsMap();
-            foreach (var subPath in routes.Keys())
-                Expand(trie, components, CombinePaths(path, subPath), routes[subPath].AsMap(), currentEnv, nextStack);
+            Console.WriteLine($"[ERROR] Circular component dependency detected: {string.Join(" -> ", stack)} -> {componentName}");
+            return;
         }
+
+        var component = components[componentName].AsMap();
+        if (component.IsEmpty)
+        {
+            Console.WriteLine($"[WARNING] Component '{componentName}' not found.");
+            return;
+        }
+
+        var nextStack = new HashSet<string>(stack, StringComparer.Ordinal) { componentName };
+        var routes = component["Routes"].AsMap();
+        foreach (var subPath in routes.Keys())
+            Expand(trie, components, CombinePaths(path, subPath), routes[subPath].AsMap(), currentEnv, nextStack);
     }
 
     private static IMap MergeEnv(IMap parent, IMap local)
@@ -65,7 +65,6 @@ public sealed class BlueprintCompiler(IServiceProvider serviceProvider, Func<str
         if (parent.IsEmpty) 
             return local;
 
-        // Higher-level (parent/mount) values should override lower-level (local/component) values.
         return DictionaryMap.New.With(local).With(parent);
     }
 

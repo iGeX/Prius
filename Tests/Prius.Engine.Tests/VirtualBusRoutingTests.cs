@@ -2,7 +2,6 @@ namespace Prius.Engine.Tests;
 
 using Xunit;
 using Core.Maps;
-using Abstractions;
 
 public sealed class VirtualBusRoutingTests
 {
@@ -12,11 +11,7 @@ public sealed class VirtualBusRoutingTests
         var trie = new RoutingTrie();
         var deepSpy = new SpyElement();
         
-        // Register a deep wildcard at 'api/users'
         trie.AddRoute("api/users/**", deepSpy);
-        
-        // There is NO route for 'api/users/profile/avatar' specifically,
-        // and NO 'api/users/profile' node in Trie (except as part of resolution)
         
         var bus = new VirtualBus(trie);
 
@@ -32,7 +27,6 @@ public sealed class VirtualBusRoutingTests
     {
         var bus = new VirtualBus(new RoutingTrie());
         
-        // MapPath "a//b" is a single segment "a/b"
         var path = new MapPath("a//b");
         Assert.Equal(4, path.Length);
         Assert.Equal("a/b", path.Head);
@@ -41,7 +35,6 @@ public sealed class VirtualBusRoutingTests
         bus.Put("a//b", "value");
         Assert.Equal("value", bus.Get("a//b").AsString());
         
-        // Verify it is NOT two segments "a" and "b"
         Assert.True(bus.Get("a").IsEmpty);
     }
 
@@ -80,16 +73,14 @@ public sealed class VirtualBusRoutingTests
         trie.AddRoute("api/**", subDeepSpy);
         
         var bus = new VirtualBus(trie);
-
-        // Should match api/**
+        
         bus.Put("api/any/thing", 1);
         Assert.False(rootDeepSpy.WasExecuted);
         Assert.True(subDeepSpy.WasExecuted);
         Assert.Equal("any/thing", subDeepSpy.LastRemainingPath);
 
         subDeepSpy.Reset();
-
-        // Should match root **
+        
         bus.Put("other/path", 2);
         Assert.True(rootDeepSpy.WasExecuted);
         Assert.Equal("other/path", rootDeepSpy.LastRemainingPath);

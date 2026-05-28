@@ -55,7 +55,7 @@ public sealed class PocoModelMap : IMap
         
             value.Switch(
                 _ => prop.SetValue(_model, null),
-                map => prop.SetValue(_model, map.DeepCopy()),
+                map => prop.SetValue(_model, map),
                 val => prop.SetValue(_model, val)
             );
         }

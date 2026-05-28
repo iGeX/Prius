@@ -12,7 +12,7 @@ public class MapTests
         var path = (MapPath)"orders/active/1";
         
         map.DeepPut(path, 42L);
-        var result = map.GetDeep(path);
+        var result = map.DeepGet(path);
 
         Assert.True(result.IsLong);
         Assert.Equal(42L, (long)result);
@@ -33,7 +33,7 @@ public class MapTests
         dictMap["data"] = new MapValue(sub);
         
         Assert.True(jsonMap.DeepEquals(dictMap));
-        Assert.Equal("active", jsonMap.GetDeep("data/status").AsValue<string>());
+        Assert.Equal("active", jsonMap.DeepGet("data/status").AsValue<string>());
     }
 
     [Fact]
@@ -57,8 +57,8 @@ public class MapTests
         var copy = new DictionaryMap(root.DeepCopy());
         copy.DeepPut("a/b/c", "mutated");
         
-        Assert.Equal("origin", root.GetDeep("a/b/c").AsValue<string>());
-        Assert.Equal("mutated", copy.GetDeep("a/b/c").AsValue<string>());
+        Assert.Equal("origin", root.DeepGet("a/b/c").AsValue<string>());
+        Assert.Equal("mutated", copy.DeepGet("a/b/c").AsValue<string>());
     }
 
     [Fact]
@@ -83,7 +83,7 @@ public class MapTests
         map.DeepPut("path/sub", 2L);
 
         Assert.True(map["path"].IsMap);
-        Assert.Equal(2L, map.GetDeep("path/sub").AsValue<long>());
+        Assert.Equal(2L, map.DeepGet("path/sub").AsValue<long>());
     }
 
     [Fact]

@@ -1,10 +1,8 @@
 namespace Prius.Engine.Tests;
 
-using System.Collections.Generic;
 using System.Linq;
 using Xunit;
 using Core.Maps;
-using Abstractions;
 
 public sealed class ElementContextTests
 {
@@ -18,7 +16,6 @@ public sealed class ElementContextTests
         var trie = new RoutingTrie();
         var spy = new SpyElement();
         
-        // Setup hierarchy: Root (parentEnv) -> Child (staticEnv + envPatch)
         trie.AddRoute("root", new CascadeRouterElement("child", envPatch), parentEnv);
         trie.AddRoute("root/child", spy, staticEnv);
         
@@ -36,7 +33,6 @@ public sealed class ElementContextTests
         Assert.Contains("K4", keys);
         Assert.Equal(4, keys.Count);
 
-        // Verify values are from correct priority layers
         Assert.Equal("P1", ctx["K1"].AsString());
         Assert.Equal("S2", ctx["K2"].AsString());
         Assert.Equal("D3", ctx["K3"].AsString());

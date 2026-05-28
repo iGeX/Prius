@@ -67,7 +67,7 @@ public sealed class Bootstrap
                 var manifest = manifests[pkgId].AsMap();
                 var assets = manifest["Assets"].AsMap();
 
-                Console.WriteLine($"[LOAD] {pkgId} ({manifest.GetDeep("Info/version").AsString()})");
+                Console.WriteLine($"[LOAD] {pkgId} ({manifest.DeepGet("Info/version").AsString()})");
                 
                 await LoadLibs(assets, services);
                 
@@ -222,7 +222,7 @@ public sealed class Bootstrap
         }
     }
     
-    private ValueTask ExecuteEntry() => ValueTask.CompletedTask;
+    private static ValueTask ExecuteEntry() => ValueTask.CompletedTask;
     
     public async ValueTask Stasis()
     {

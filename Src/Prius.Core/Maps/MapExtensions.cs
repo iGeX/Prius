@@ -345,7 +345,7 @@ public static class MapExtensions
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static IMap AsReadOnly(this IMap map) => new ReadOnlyMap(map);
 
-    public static MapValue GetDeep(this IMap map, MapPath path)
+    public static MapValue DeepGet(this IMap map, MapPath path)
     {
         while (true)
         {
@@ -390,9 +390,8 @@ public static class MapExtensions
                     targetMap.DeepPut(k, sourceMap[k]);
             }
             else
-            {
                 map[key] = value;
-            }
+
             return;
         }
 

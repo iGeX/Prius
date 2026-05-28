@@ -35,10 +35,10 @@ public sealed class PackageImporterTests
         stream.Position = 0;
         var map = PackageImporter.Import(stream);
         
-        Assert.Equal("Test.Package", map.GetDeep("Info/id").AsValue<string>());
-        Assert.Equal("1.2.3", map.GetDeep("Info/version").AsValue<string>());
+        Assert.Equal("Test.Package", map.DeepGet("Info/id").AsValue<string>());
+        Assert.Equal("1.2.3", map.DeepGet("Info/version").AsValue<string>());
         
-        var asset = map.GetDeep("Assets/lib/net8.0/Test.dll").AsMap();
+        var asset = map.DeepGet("Assets/lib/net8.0/Test.dll").AsMap();
         Assert.False(asset.IsEmpty);
         
         Assert.True(asset["size"].AsValue<long>() > 0);

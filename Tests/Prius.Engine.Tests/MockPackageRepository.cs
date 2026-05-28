@@ -10,8 +10,8 @@ public sealed class MockPackageRepository : IPackageRepository
 
     public void AddPackage(IMap manifest, Dictionary<string, byte[]>? blobs = null)
     {
-        var id = manifest.GetDeep("Info/id").AsString();
-        var ver = manifest.GetDeep("Info/version").AsString();
+        var id = manifest.DeepGet("Info/id").AsString();
+        var ver = manifest.DeepGet("Info/version").AsString();
         _manifests[$"{id}_{ver}"] = manifest;
 
         if (blobs == null)

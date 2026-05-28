@@ -48,7 +48,7 @@ public sealed class PackageResolver(IPackageRepository repository)
                 var existing = resolvedManifests[id].AsMap();
                 if (!existing.IsEmpty)
                 {
-                    var existingVer = existing.GetDeep("Info/version").AsString();
+                    var existingVer = existing.DeepGet("Info/version").AsString();
                     if (string.CompareOrdinal(existingVer, version) >= 0) 
                         continue;
                 }

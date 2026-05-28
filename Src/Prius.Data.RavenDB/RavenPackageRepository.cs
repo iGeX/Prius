@@ -233,14 +233,14 @@ public sealed class RavenPackageRepository(
 
     private static IMap FilterManifestByTfm(IMap fullManifest, string tfm)
     {
-        var rootDependencies = fullManifest.GetDeep(new MapPath("Dependencies".AsSpan()));
+        var rootDependencies = fullManifest.DeepGet(new MapPath("Dependencies".AsSpan()));
         if (!rootDependencies.IsMap)
             return fullManifest;
 
         var depsMap = rootDependencies.AsMap();
         var result = DictionaryMap.New;
         
-        var info = fullManifest.GetDeep(new MapPath("Info".AsSpan()));
+        var info = fullManifest.DeepGet(new MapPath("Info".AsSpan()));
         if (info.IsMap)
             result["Info"] = info;
 
@@ -249,7 +249,7 @@ public sealed class RavenPackageRepository(
 
         foreach (var currentTfm in tfmsToSearch)
         {
-            var targetDeps = depsMap.GetDeep(new MapPath(currentTfm.AsSpan()));
+            var targetDeps = depsMap.DeepGet(new MapPath(currentTfm.AsSpan()));
             if (!targetDeps.IsMap)
                 continue;
             

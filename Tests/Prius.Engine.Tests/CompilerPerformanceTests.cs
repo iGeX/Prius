@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using Prius.Core.Maps;
-using Prius.Engine;
 using Prius.Engine.Abstractions;
 using Xunit;
 
@@ -15,7 +14,7 @@ public sealed class CompilerPerformanceTests
         public MapValue Get(IElementContext context, MapPath path) => new();
     }
 
-    private Type? ResolveType(string name) => typeof(MockElement);
+    private static Type ResolveType(string name) => typeof(MockElement);
 
     [Fact]
     public void Compile_LargeBlueprint_IsFast()
@@ -29,10 +28,10 @@ public sealed class CompilerPerformanceTests
         var mountsCount = 1000;
 
         var componentsMap = DictionaryMap.New;
-        for (int i = 0; i < componentsCount; i++)
+        for (var i = 0; i < componentsCount; i++)
         {
             var routes = DictionaryMap.New;
-            for (int j = 0; j < routesPerComponent; j++)
+            for (var j = 0; j < routesPerComponent; j++)
             {
                 routes.With($"route_{j}", DictionaryMap.New
                     .With("Element", "MockElement")
@@ -42,7 +41,7 @@ public sealed class CompilerPerformanceTests
         }
 
         var mountsMap = DictionaryMap.New;
-        for (int i = 0; i < mountsCount; i++)
+        for (var i = 0; i < mountsCount; i++)
         {
             mountsMap.With($"/mount/point_{i}", DictionaryMap.New
                 .With("Component", $"Comp_{i % componentsCount}")

@@ -48,7 +48,7 @@ internal sealed class VirtualBus : IBusContext
 
     private void ClearCache() => _routeCache.Clear();
 
-    internal bool DispatchPut(IBusContext caller, MapPath relativePath, MapValue value, IMap? envPatch)
+    public bool DispatchPut(IBusContext caller, MapPath relativePath, MapValue value, IMap? envPatch)
     {
         if (caller.Depth >= MaxDispatchDepth)
             throw new InvalidOperationException("Maximum dispatch depth exceeded.");
@@ -64,7 +64,7 @@ internal sealed class VirtualBus : IBusContext
             var initialFallback = caller.MatchType == MatchType.DeepWildcard ? caller.Owner : null;
             var initialFallbackEnv = initialFallback != null ? caller.StaticEnv : null;
 
-            var resolveResult = _routingTrie.ResolveScoped(caller.MountNode, relativePath, initialFallback, initialFallbackEnv);
+            var resolveResult = RoutingTrie.ResolveScoped(caller.MountNode, relativePath, initialFallback, initialFallbackEnv);
             
             if (resolveResult.Element is EmptyElement)
             {
@@ -106,12 +106,10 @@ internal sealed class VirtualBus : IBusContext
             }
         }
         else
-        {
             caller.Node.DeepPut(relativePath, value);
-        }
     }
 
-    internal MapValue DispatchGet(IBusContext caller, MapPath relativePath, IMap? envPatch)
+    public MapValue DispatchGet(IBusContext caller, MapPath relativePath, IMap? envPatch)
     {
         if (caller.Depth >= MaxDispatchDepth)
             throw new InvalidOperationException("Maximum dispatch depth exceeded.");
@@ -124,7 +122,7 @@ internal sealed class VirtualBus : IBusContext
             var initialFallback = caller.MatchType == MatchType.DeepWildcard ? caller.Owner : null;
             var initialFallbackEnv = initialFallback != null ? caller.StaticEnv : null;
 
-            var resolveResult = _routingTrie.ResolveScoped(caller.MountNode, relativePath, initialFallback, initialFallbackEnv);
+            var resolveResult = RoutingTrie.ResolveScoped(caller.MountNode, relativePath, initialFallback, initialFallbackEnv);
             
             if (resolveResult.Element is EmptyElement)
                 return ReadFromMemory(caller, relativePath);
@@ -141,8 +139,7 @@ internal sealed class VirtualBus : IBusContext
             var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? (caller as ElementContext)?.CallerSegment ?? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).LastSegment;
             var subContext = new ElementContext(this, resolveResult.Element, caller, caller.Depth + 1, callerSegment, mountPathStr, envPatch, resolveResult.StaticEnv, memoryMaps.Current, parentMap, resolveResult.MatchNode, resolveResult.MatchType);
 
-            var result = resolveResult.Element.Get(subContext, resolveResult.RemainingPath);
-            return result.IsEmpty ? ReadFromMemory(caller, relativePath) : result;
+            return resolveResult.Element.Get(subContext, resolveResult.RemainingPath);
         }
     }
 
@@ -150,7 +147,7 @@ internal sealed class VirtualBus : IBusContext
     {
         if (relativePath.IsEmpty && caller.ParentNode != null)
             return caller.ParentNode[new MapPath(caller.CallerSegment).LastSegment];
-        return caller.Node.GetDeep(relativePath);
+        return caller.Node.DeepGet(relativePath);
     }
 
     private static string GetMountPath(string fullPath, MapPath remainingPath)

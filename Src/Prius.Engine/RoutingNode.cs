@@ -5,18 +5,17 @@ namespace Prius.Engine;
 
 internal sealed class RoutingNode
 {
-    // Точные совпадения сегментов (например, "Sys", "Orders", "Config")
     public Dictionary<string, RoutingNode> Children { get; } = new(StringComparer.Ordinal);
     
-    // Реактор, если этот узел — точное окончание пути
     public IElement? TerminalElement { get; set; }
+    
     public IMap? TerminalStaticEnv { get; set; }
     
-    // Реактор, если на этом уровне сработал одинарный вайлдкард '*'
     public IElement? WildcardElement { get; set; }
+    
     public IMap? WildcardStaticEnv { get; set; }
     
-    // Реактор, если на этом уровне сработал глубокий вайлдкард '**' (перехватывает всё ниже)
     public IElement? DeepWildcardElement { get; set; }
+    
     public IMap? DeepWildcardStaticEnv { get; set; }
 }

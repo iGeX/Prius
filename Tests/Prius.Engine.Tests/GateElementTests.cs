@@ -6,7 +6,7 @@ namespace Prius.Engine.Tests;
 
 public sealed class GateElementTests
 {
-    private IElementContext CreateBus(GateElement gate, string path)
+    private static IElementContext CreateBus(GateElement gate, string path)
     {
         var trie = new RoutingTrie();
         trie.AddRoute(path, gate);

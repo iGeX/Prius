@@ -3,12 +3,10 @@ using Prius.Engine.Abstractions;
 
 namespace Prius.Engine;
 
-public sealed class RoutingTrie
+internal sealed class RoutingTrie
 {
-    private readonly RoutingNode _root = new();
-
-    internal RoutingNode Root => _root;
-
+    public RoutingNode Root { get; } = new();
+    
     public void AddRoute(string pathPattern, IElement element, IMap? staticEnv = null)
     {
         if (string.IsNullOrWhiteSpace(pathPattern)) 
@@ -16,7 +14,7 @@ public sealed class RoutingTrie
         ArgumentNullException.ThrowIfNull(element);
 
         var path = (MapPath)pathPattern;
-        var current = _root;
+        var current = Root;
 
         while (!path.IsEmpty)
         {
@@ -50,27 +48,25 @@ public sealed class RoutingTrie
         current.TerminalStaticEnv = staticEnv;
     }
 
-    public ResolveResult Resolve(MapPath absolutePath) => ResolveScoped(_root, absolutePath, null, null);
+    public ResolveResult Resolve(MapPath absolutePath) => ResolveScoped(Root, absolutePath, null, null);
 
-    internal ResolveResult ResolveScoped(RoutingNode startNode, MapPath path, IElement? initialFallback, IMap? initialFallbackEnv)
+    public static ResolveResult ResolveScoped(RoutingNode startNode, MapPath path, IElement? initialFallback, IMap? initialFallbackEnv)
     {
         var current = startNode;
-        IElement? fallbackElement = initialFallback;
-        IMap? fallbackStaticEnv = initialFallbackEnv;
+        var fallbackElement = initialFallback;
+        var fallbackStaticEnv = initialFallbackEnv;
         var fallbackDepth = 0;
-        var fallbackKey = string.Empty;
         var fallbackNode = startNode;
 
         var originalPath = path;
         var currentDepth = 0;
-        var lastMatchedKey = string.Empty;
 
         if (path.IsEmpty)
         {
             if (current.TerminalElement != null)
-                return new ResolveResult(current.TerminalElement, string.Empty, string.Empty, current.TerminalStaticEnv, current, MatchType.Terminal);
+                return new ResolveResult(current.TerminalElement, string.Empty, current.TerminalStaticEnv, current, MatchType.Terminal);
             
-            return new ResolveResult(EmptyElement.Instance, string.Empty, string.Empty, null, current, MatchType.None);
+            return new ResolveResult(EmptyElement.Instance, string.Empty, null, current, MatchType.None);
         }
 
         while (!path.IsEmpty)
@@ -80,7 +76,6 @@ public sealed class RoutingTrie
                 fallbackElement = current.DeepWildcardElement;
                 fallbackStaticEnv = current.DeepWildcardStaticEnv;
                 fallbackDepth = currentDepth;
-                fallbackKey = lastMatchedKey;
                 fallbackNode = current;
             }
 
@@ -90,52 +85,45 @@ public sealed class RoutingTrie
             if (current.Children.TryGetValue(segment, out var nextNode))
             {
                 current = nextNode;
-                lastMatchedKey = segment;
                 path = path.Tail;
                 currentDepth++;
                 
                 if (current.TerminalElement != null)
-                    return new ResolveResult(current.TerminalElement, path, lastMatchedKey, current.TerminalStaticEnv, current, MatchType.Terminal);
+                    return new ResolveResult(current.TerminalElement, path, current.TerminalStaticEnv, current, MatchType.Terminal);
                 
                 continue;
             }
 
             if (isLastSegment && current.WildcardElement != null)
-                return new ResolveResult(current.WildcardElement, string.Empty, segment, current.WildcardStaticEnv, current, MatchType.Wildcard);
+                return new ResolveResult(current.WildcardElement, string.Empty, current.WildcardStaticEnv, current, MatchType.Wildcard);
 
             if (current.Children.TryGetValue("@wildcard", out var wildcardNode))
             {
                 current = wildcardNode;
-                lastMatchedKey = segment;
                 path = path.Tail;
                 currentDepth++;
                 
                 if (current.TerminalElement != null)
-                    return new ResolveResult(current.TerminalElement, path, lastMatchedKey, current.TerminalStaticEnv, current, MatchType.Terminal);
+                    return new ResolveResult(current.TerminalElement, path, current.TerminalStaticEnv, current, MatchType.Terminal);
                 
                 continue;
             }
 
             if (fallbackElement != null)
-            {
-                return new ResolveResult(fallbackElement, SlicePath(originalPath, fallbackDepth), fallbackKey, fallbackStaticEnv, fallbackNode, MatchType.DeepWildcard);
-            }
+                return new ResolveResult(fallbackElement, SlicePath(originalPath, fallbackDepth), fallbackStaticEnv, fallbackNode, MatchType.DeepWildcard);
 
-            return new ResolveResult(EmptyElement.Instance, string.Empty, segment, null, current, MatchType.None);
+            return new ResolveResult(EmptyElement.Instance, string.Empty, null, current, MatchType.None);
         }
 
         if (current.TerminalElement != null)
-            return new ResolveResult(current.TerminalElement, string.Empty, lastMatchedKey, current.TerminalStaticEnv, current, MatchType.Terminal);
+            return new ResolveResult(current.TerminalElement, string.Empty, current.TerminalStaticEnv, current, MatchType.Terminal);
 
         if (current.DeepWildcardElement != null && (current != startNode || initialFallback == null))
-            return new ResolveResult(current.DeepWildcardElement, string.Empty, lastMatchedKey, current.DeepWildcardStaticEnv, current, MatchType.DeepWildcard);
+            return new ResolveResult(current.DeepWildcardElement, string.Empty, current.DeepWildcardStaticEnv, current, MatchType.DeepWildcard);
 
-        if (fallbackElement != null)
-        {
-            return new ResolveResult(fallbackElement, SlicePath(originalPath, fallbackDepth), fallbackKey, fallbackStaticEnv, fallbackNode, MatchType.DeepWildcard);
-        }
-
-        return new ResolveResult(EmptyElement.Instance, string.Empty, lastMatchedKey, null, current, MatchType.None);
+        return fallbackElement != null 
+            ? new ResolveResult(fallbackElement, SlicePath(originalPath, fallbackDepth), fallbackStaticEnv, fallbackNode, MatchType.DeepWildcard) 
+            : new ResolveResult(EmptyElement.Instance, string.Empty, null, current, MatchType.None);
     }
 
     private static MapPath SlicePath(MapPath path, int segmentsToSkip)
@@ -148,7 +136,7 @@ public sealed class RoutingTrie
     }
 }
 
-public enum MatchType
+internal enum MatchType
 {
     None,
     Terminal,
@@ -156,20 +144,15 @@ public enum MatchType
     DeepWildcard
 }
 
-public readonly ref struct ResolveResult
+internal readonly ref struct ResolveResult(IElement element, MapPath remainingPath, IMap? staticEnv, RoutingNode node, MatchType matchType)
 {
-    public IElement Element { get; }
-    public MapPath RemainingPath { get; }
-    public IMap? StaticEnv { get; }
-    internal RoutingNode MatchNode { get; }
-    public MatchType MatchType { get; }
+    public IElement Element { get; } = element;
 
-    internal ResolveResult(IElement element, MapPath remainingPath, string elementKey, IMap? staticEnv, RoutingNode node, MatchType matchType)
-    {
-        Element = element;
-        RemainingPath = remainingPath;
-        StaticEnv = staticEnv;
-        MatchNode = node;
-        MatchType = matchType;
-    }
+    public MapPath RemainingPath { get; } = remainingPath;
+
+    public IMap? StaticEnv { get; } = staticEnv;
+
+    public RoutingNode MatchNode { get; } = node;
+
+    public MatchType MatchType { get; } = matchType;
 }
