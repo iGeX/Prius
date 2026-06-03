@@ -1,7 +1,6 @@
 namespace Prius.Engine.Tests;
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -70,21 +69,16 @@ public sealed class VirtualBusConcurrencyTests
         
         var tasks = Enumerable.Range(0, ThreadCount).Select(t => Task.Run(() => 
         {
-            for (int i = 0; i < Iterations; i++)
-            {
-                // Each thread writes to a common root but different sub-branches
+            for (var i = 0; i < Iterations; i++)
                 bus.Put($"root/thread_{t}/iter_{i}/data", i);
-            }
         }, TestContext.Current.CancellationToken)).ToArray();
 
         await Task.WhenAll(tasks);
 
-        for (int t = 0; t < ThreadCount; t++)
+        for (var t = 0; t < ThreadCount; t++)
         {
-            for (int i = 0; i < Iterations; i++)
-            {
+            for (var i = 0; i < Iterations; i++)
                 Assert.Equal(i, bus.Get($"root/thread_{t}/iter_{i}/data").AsInt());
-            }
         }
     }
 
@@ -97,12 +91,11 @@ public sealed class VirtualBusConcurrencyTests
         
         var readWriteTask = Task.Run(() => 
         {
-            int counter = 0;
+            var counter = 0;
             while (!cts.IsCancellationRequested)
             {
                 var path = $"data/{counter % 100}";
                 bus.Put(path, counter);
-                var val = bus.Get(path).AsInt();
                 counter++;
             }
         }, TestContext.Current.CancellationToken);
@@ -131,31 +124,23 @@ public sealed class VirtualBusConcurrencyTests
 
         var task1 = Task.Run(() => 
         {
-            for (int i = 0; i < Iterations; i++)
-            {
+            for (var i = 0; i < Iterations; i++)
                 bus.Put(Path, i);
-            }
         }, TestContext.Current.CancellationToken);
 
         var task2 = Task.Run(() => 
         {
-            for (int i = 0; i < Iterations; i++)
-            {
+            for (var i = 0; i < Iterations; i++)
                 bus.Put($"{Path}/sub", "value");
-            }
         }, TestContext.Current.CancellationToken);
 
         await Task.WhenAll(task1, task2);
         
         var result = bus.Get(Path);
         if (result.IsMap)
-        {
             Assert.Equal("value", bus.Get($"{Path}/sub").AsString());
-        }
         else
-        {
             Assert.True(result.AsLong() >= 0);
-        }
     }
 
     [Fact]
@@ -174,7 +159,7 @@ public sealed class VirtualBusConcurrencyTests
 
         await Task.WhenAll(tasks);
         
-        int retries = 50;
+        var retries = 50;
         while (spy.CallCount < Count && retries-- > 0)
             await Task.Delay(100, TestContext.Current.CancellationToken);
 
@@ -193,20 +178,16 @@ public sealed class VirtualBusConcurrencyTests
 
         var writerTasks = Enumerable.Range(0, Writers).Select(w => Task.Run(() => 
         {
-            for (int i = 0; i < Iterations && !cts.IsCancellationRequested; i++)
-            {
+            for (var i = 0; i < Iterations && !cts.IsCancellationRequested; i++)
                 bus.Put($"branch_{w}/key_{i % 10}", i);
-            }
         }, TestContext.Current.CancellationToken)).ToArray();
 
         var readerTasks = Enumerable.Range(0, Readers).Select(r => Task.Run(() => 
         {
             while (!cts.IsCancellationRequested)
             {
-                for (int w = 0; w < Writers; w++)
-                {
+                for (var w = 0; w < Writers; w++)
                     _ = bus.Get($"branch_{w}/key_{r % 10}");
-                }
             }
         }, TestContext.Current.CancellationToken)).ToArray();
 
@@ -227,20 +208,16 @@ public sealed class VirtualBusConcurrencyTests
 
         var tasks = Enumerable.Range(0, ThreadCount).Select(t => Task.Run(() =>
         {
-            for (int i = 0; i < Iterations; i++)
-            {
+            for (var i = 0; i < Iterations; i++)
                 bus.Put($"rec/t{t}/i{i}", "trigger");
-            }
         }, TestContext.Current.CancellationToken)).ToArray();
 
         await Task.WhenAll(tasks);
         
-        for (int t = 0; t < ThreadCount; t++)
+        for (var t = 0; t < ThreadCount; t++)
         {
-            for (int i = 0; i < Iterations; i++)
-            {
+            for (var i = 0; i < Iterations; i++)
                 Assert.Equal("done", bus.Get($"rec/t{t}/i{i}/sub").AsString());
-            }
         }
     }
 
@@ -258,9 +235,9 @@ public sealed class VirtualBusConcurrencyTests
         const int ThreadCount = 20;
         const int Iterations = 500;
 
-        var tasks = Enumerable.Range(0, ThreadCount).Select(t => Task.Run(() =>
+        var tasks = Enumerable.Range(0, ThreadCount).Select(_ => Task.Run(() =>
         {
-            for (int i = 0; i < Iterations; i++)
+            for (var i = 0; i < Iterations; i++)
             {
                 bus.Get("api/v1/users");
                 bus.Get("api/v2/products/123/details");

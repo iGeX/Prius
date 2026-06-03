@@ -1,17 +1,18 @@
 namespace Prius.Engine;
 
 using System;
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading;
 using Core.Maps;
 using Abstractions;
 
-internal sealed class VirtualBus : IBusContext
+internal sealed class VirtualBus : IBusContext, IDisposable
 {
     private readonly ConcurrentDictionary<string, IElement> _routeCache = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, IElement>.AlternateLookup<ReadOnlySpan<char>> _cacheLookup;
-    private readonly Lock _syncRoot = new();
+    private readonly BusLockNode _lockRoot = new();
     
     private RoutingTrie _routingTrie;
     private readonly DictionaryMap _memoryRoot = DictionaryMap.New;
@@ -24,9 +25,16 @@ internal sealed class VirtualBus : IBusContext
 
     public void UpdateTrie(RoutingTrie trie)
     {
-        lock (_syncRoot)
+        _lockRoot.Lock.EnterWriteLock();
+        try
+        {
             _routingTrie = trie;
-        ClearCache();
+            ClearCache();
+        }
+        finally
+        {
+            _lockRoot.Lock.ExitWriteLock();
+        }
     }
 
     private const int MaxDispatchDepth = 128;
@@ -53,39 +61,82 @@ internal sealed class VirtualBus : IBusContext
         if (caller.Depth >= MaxDispatchDepth)
             throw new InvalidOperationException("Maximum dispatch depth exceeded.");
 
-        lock (_syncRoot)
+        var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
+        var lockNodes = ArrayPool<BusLockNode>.Shared.Rent(MaxDispatchDepth);
+        try
         {
-            if (relativePath.IsEmpty)
+            var lockCount = FillLockPath(absolutePathString, lockNodes);
+            var span = lockNodes.AsSpan(0, lockCount);
+
+            for (var i = 0; i < lockCount; i++) span[i].Lock.EnterReadLock();
+            int startWriteAt;
+            try
             {
-                WriteToMemory(caller, relativePath, value);
-                return false;
+                startWriteAt = GetStartWriteIndex(absolutePathString, lockCount);
             }
-
-            var initialFallback = caller.MatchType == MatchType.DeepWildcard ? caller.Owner : null;
-            var initialFallbackEnv = initialFallback != null ? caller.StaticEnv : null;
-
-            var resolveResult = RoutingTrie.ResolveScoped(caller.MountNode, relativePath, initialFallback, initialFallbackEnv);
-            
-            if (resolveResult.Element is EmptyElement)
+            finally
             {
-                WriteToMemory(caller, relativePath, value);
-                return false;
+                for (var i = lockCount - 1; i >= 0; i--) span[i].Lock.ExitReadLock();
             }
-
-            var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
-            CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Element);
-
-            var mountPathStr = GetMountPath(absolutePathString, resolveResult.RemainingPath);
-            var mountRelativePathStr = GetMountPath(relativePath.ToString(), resolveResult.RemainingPath);
             
-            var memoryMaps = FindOrCreateMemoryMap(caller.Node, new MapPath(mountRelativePathStr.AsSpan()));
-            var parentMap = memoryMaps.Parent ?? caller.ParentNode;
-            
-            var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? (caller as ElementContext)?.CallerSegment ?? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).LastSegment;
-            var subContext = new ElementContext(this, resolveResult.Element, caller, caller.Depth + 1, callerSegment, mountPathStr, envPatch, resolveResult.StaticEnv, memoryMaps.Current, parentMap, resolveResult.MatchNode, resolveResult.MatchType);
+            EnterLocks(span, startWriteAt, true);
+            try
+            {
+                if (relativePath.IsEmpty)
+                {
+                    WriteToMemory(caller, relativePath, value);
+                    return false;
+                }
 
-            return resolveResult.Element.Put(subContext, resolveResult.RemainingPath, value);
+                var initialFallback = caller.MatchType == MatchType.DeepWildcard ? caller.Owner : null;
+                var initialFallbackEnv = initialFallback != null ? caller.StaticEnv : null;
+
+                var resolveResult = RoutingTrie.ResolveScoped(caller.MountNode, relativePath, initialFallback, initialFallbackEnv);
+                
+                if (resolveResult.Element is EmptyElement)
+                {
+                    WriteToMemory(caller, relativePath, value);
+                    return false;
+                }
+
+                CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Element);
+
+                var mountPathStr = GetMountPath(absolutePathString, resolveResult.RemainingPath);
+                var mountRelativePathStr = GetMountPath(relativePath.ToString(), resolveResult.RemainingPath);
+                
+                var memoryMaps = FindOrCreateMemoryMap(caller.Node, new MapPath(mountRelativePathStr.AsSpan()));
+                var parentMap = memoryMaps.Parent ?? caller.ParentNode;
+                
+                var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? (caller as ElementContext)?.CallerSegment ?? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).LastSegment;
+                var subContext = new ElementContext(this, resolveResult.Element, caller, caller.Depth + 1, callerSegment, mountPathStr, envPatch, resolveResult.StaticEnv, memoryMaps.Current, parentMap, resolveResult.MatchNode, resolveResult.MatchType);
+
+                return resolveResult.Element.Put(subContext, resolveResult.RemainingPath, value);
+            }
+            finally
+            {
+                ExitLocks(span, startWriteAt, true);
+            }
         }
+        finally
+        {
+            ArrayPool<BusLockNode>.Shared.Return(lockNodes);
+        }
+    }
+
+    private int GetStartWriteIndex(string absolutePath, int lockCount)
+    {
+        var startWriteAt = Math.Max(0, lockCount - 2);
+        
+        IMap current = _memoryRoot;
+        var path = new MapPath(absolutePath.AsSpan());
+        for (var i = 0; i < startWriteAt; i++)
+        {
+            var val = current[path.Head];
+            if (!val.IsMap) return i;
+            current = val.AsMap();
+            path = path.Tail;
+        }
+        return startWriteAt;
     }
 
     private static void WriteToMemory(IBusContext caller, MapPath relativePath, MapValue value)
@@ -114,32 +165,89 @@ internal sealed class VirtualBus : IBusContext
         if (caller.Depth >= MaxDispatchDepth)
             throw new InvalidOperationException("Maximum dispatch depth exceeded.");
 
-        lock (_syncRoot)
+        var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
+        var lockNodes = ArrayPool<BusLockNode>.Shared.Rent(MaxDispatchDepth);
+        try
         {
-            if(relativePath.IsEmpty)
-                return ReadFromMemory(caller, relativePath);
-            
-            var initialFallback = caller.MatchType == MatchType.DeepWildcard ? caller.Owner : null;
-            var initialFallbackEnv = initialFallback != null ? caller.StaticEnv : null;
+            var lockCount = FillLockPath(absolutePathString, lockNodes);
+            var span = lockNodes.AsSpan(0, lockCount);
 
-            var resolveResult = RoutingTrie.ResolveScoped(caller.MountNode, relativePath, initialFallback, initialFallbackEnv);
-            
-            if (resolveResult.Element is EmptyElement)
-                return ReadFromMemory(caller, relativePath);
+            EnterLocks(span, lockCount, false);
+            try
+            {
+                if(relativePath.IsEmpty)
+                    return ReadFromMemory(caller, relativePath);
+                
+                var initialFallback = caller.MatchType == MatchType.DeepWildcard ? caller.Owner : null;
+                var initialFallbackEnv = initialFallback != null ? caller.StaticEnv : null;
 
-            var absolutePathString = CombinePathsToString(caller.AbsolutePath, relativePath);
-            CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Element);
+                var resolveResult = RoutingTrie.ResolveScoped(caller.MountNode, relativePath, initialFallback, initialFallbackEnv);
+                
+                if (resolveResult.Element is EmptyElement)
+                    return ReadFromMemory(caller, relativePath);
 
-            var mountPathStr = GetMountPath(absolutePathString, resolveResult.RemainingPath);
-            var mountRelativePathStr = GetMountPath(relativePath.ToString(), resolveResult.RemainingPath);
-            
-            var memoryMaps = FindOrCreateMemoryMap(caller.Node, new MapPath(mountRelativePathStr.AsSpan()));
-            var parentMap = memoryMaps.Parent ?? caller.ParentNode;
-            
-            var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? (caller as ElementContext)?.CallerSegment ?? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).LastSegment;
-            var subContext = new ElementContext(this, resolveResult.Element, caller, caller.Depth + 1, callerSegment, mountPathStr, envPatch, resolveResult.StaticEnv, memoryMaps.Current, parentMap, resolveResult.MatchNode, resolveResult.MatchType);
+                CacheResolvedRoute(absolutePathString.AsSpan(), resolveResult.Element);
 
-            return resolveResult.Element.Get(subContext, resolveResult.RemainingPath);
+                var mountPathStr = GetMountPath(absolutePathString, resolveResult.RemainingPath);
+                var mountRelativePathStr = GetMountPath(relativePath.ToString(), resolveResult.RemainingPath);
+                
+                var memoryMaps = FindOrCreateMemoryMap(caller.Node, new MapPath(mountRelativePathStr.AsSpan()));
+                var parentMap = memoryMaps.Parent ?? caller.ParentNode;
+                
+                var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? (caller as ElementContext)?.CallerSegment ?? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).LastSegment;
+                var subContext = new ElementContext(this, resolveResult.Element, caller, caller.Depth + 1, callerSegment, mountPathStr, envPatch, resolveResult.StaticEnv, memoryMaps.Current, parentMap, resolveResult.MatchNode, resolveResult.MatchType);
+
+                return resolveResult.Element.Get(subContext, resolveResult.RemainingPath);
+            }
+            finally
+            {
+                ExitLocks(span, lockCount, false);
+            }
+        }
+        finally
+        {
+            ArrayPool<BusLockNode>.Shared.Return(lockNodes);
+        }
+    }
+
+    private int FillLockPath(string absolutePath, BusLockNode[] buffer)
+    {
+        buffer[0] = _lockRoot;
+        if (string.IsNullOrEmpty(absolutePath)) return 1;
+
+        var path = new MapPath(absolutePath.AsSpan());
+        var current = _lockRoot;
+        var count = 1;
+        while (!path.IsEmpty && count < buffer.Length)
+        {
+            current = current.GetChild(path.Head);
+            buffer[count++] = current;
+            path = path.Tail;
+        }
+        return count;
+    }
+
+    private static void EnterLocks(Span<BusLockNode> nodes, int startWriteAt, bool isWrite)
+    {
+        for (var i = 0; i < nodes.Length; i++)
+        {
+            var l = nodes[i].Lock;
+            if (isWrite && i >= startWriteAt)
+                l.EnterWriteLock();
+            else
+                l.EnterReadLock();
+        }
+    }
+
+    private static void ExitLocks(Span<BusLockNode> nodes, int startWriteAt, bool isWrite)
+    {
+        for (var i = nodes.Length - 1; i >= 0; i--)
+        {
+            var l = nodes[i].Lock;
+            if (isWrite && i >= startWriteAt)
+                l.ExitWriteLock();
+            else
+                l.ExitReadLock();
         }
     }
 
@@ -217,13 +325,93 @@ internal sealed class VirtualBus : IBusContext
     
     public bool CanWrite => true;
 
-    public IEnumerable<string> Keys(bool? ascending = null) => _memoryRoot.Keys(ascending);
+    public IEnumerable<string> Keys(bool? ascending = null)
+    {
+        _lockRoot.Lock.EnterReadLock();
+        try { return _memoryRoot.Keys(ascending); }
+        finally { _lockRoot.Lock.ExitReadLock(); }
+    }
 
-    public bool ContainsKey(string key) => _memoryRoot.ContainsKey(key);
+    public bool ContainsKey(string key)
+    {
+        var lockNodes = ArrayPool<BusLockNode>.Shared.Rent(2);
+        try
+        {
+            lockNodes[0] = _lockRoot;
+            lockNodes[1] = _lockRoot.GetChild(key.AsSpan());
+            var span = lockNodes.AsSpan(0, 2);
+            EnterLocks(span, 2, false);
+            try { return _memoryRoot.ContainsKey(key); }
+            finally { ExitLocks(span, 2, false); }
+        }
+        finally
+        {
+            ArrayPool<BusLockNode>.Shared.Return(lockNodes);
+        }
+    }
 
     public MapValue this[string key]
     {
-        get => _memoryRoot[key];
-        set => _memoryRoot[key] = value;
+        get
+        {
+            var lockNodes = ArrayPool<BusLockNode>.Shared.Rent(2);
+            try
+            {
+                lockNodes[0] = _lockRoot;
+                lockNodes[1] = _lockRoot.GetChild(key.AsSpan());
+                var span = lockNodes.AsSpan(0, 2);
+                EnterLocks(span, 2, false);
+                try { return _memoryRoot[key]; }
+                finally { ExitLocks(span, 2, false); }
+            }
+            finally
+            {
+                ArrayPool<BusLockNode>.Shared.Return(lockNodes);
+            }
+        }
+        set
+        {
+            var lockNodes = ArrayPool<BusLockNode>.Shared.Rent(2);
+            try
+            {
+                lockNodes[0] = _lockRoot;
+                lockNodes[1] = _lockRoot.GetChild(key.AsSpan());
+                var span = lockNodes.AsSpan(0, 2);
+                EnterLocks(span, 0, true);
+                try { _memoryRoot[key] = value; }
+                finally { ExitLocks(span, 0, true); }
+            }
+            finally
+            {
+                ArrayPool<BusLockNode>.Shared.Return(lockNodes);
+            }
+        }
+    }
+
+    public void Dispose() => _lockRoot.Dispose();
+
+    private sealed class BusLockNode : IDisposable
+    {
+        public readonly ReaderWriterLockSlim Lock = new(LockRecursionPolicy.SupportsRecursion);
+        private readonly ConcurrentDictionary<string, BusLockNode> _children = new(StringComparer.Ordinal);
+        private readonly ConcurrentDictionary<string, BusLockNode>.AlternateLookup<ReadOnlySpan<char>> _lookup;
+
+        public BusLockNode() => _lookup = _children.GetAlternateLookup<ReadOnlySpan<char>>();
+
+        public BusLockNode GetChild(ReadOnlySpan<char> segment)
+        {
+            if (_lookup.TryGetValue(segment, out var child))
+                return child;
+
+            var newChild = new BusLockNode();
+            return _lookup.TryAdd(segment, newChild) ? newChild : _lookup[segment];
+        }
+
+        public void Dispose()
+        {
+            Lock.Dispose();
+            foreach (var child in _children.Values)
+                child.Dispose();
+        }
     }
 }
