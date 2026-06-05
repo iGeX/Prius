@@ -33,9 +33,10 @@ public sealed class GateElement : IElement
 
     public MapValue Get(IElementContext context, MapPath path)
     {
+        var isActive = context.Get("$Active").AsBool();
         if (path.IsEmpty) 
-            return context.Get("$Active").AsBool();
+            return isActive;
 
-        return context.Get("$Active").AsBool() ? context.Get(path) : new MapValue();
+        return isActive ? context.Get(path) : new MapValue();
     }
 }

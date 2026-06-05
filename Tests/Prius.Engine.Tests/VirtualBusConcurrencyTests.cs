@@ -169,7 +169,9 @@ public sealed class VirtualBusConcurrencyTests
     [Fact]
     public async Task ReadWriteContention_HeavyLoad()
     {
-        var bus = new VirtualBus(new RoutingTrie());
+        var trie = new RoutingTrie();
+        trie.AddRoute("branch_*/**", new AtomicSpyElement());
+        var bus = new VirtualBus(trie);
         const int Writers = 5;
         const int Readers = 15;
         const int Iterations = 1000;
@@ -302,5 +304,49 @@ public sealed class VirtualBusConcurrencyTests
             return true;
         }
         public MapValue Get(IElementContext context, MapPath path) => new();
+    }
+
+    [Fact]
+    public async Task ConcurrentGet_OnNonExistentPaths_ShouldCorrupt()
+    {
+        var trie = new RoutingTrie();
+        trie.AddRoute("api/**", new AtomicSpyElement());
+        var bus = new VirtualBus(trie);
+        
+        bus.Put("api/path/init", true);
+
+        const int ThreadCount = 30;
+        var tasks = Enumerable.Range(0, ThreadCount).Select(t => Task.Run(() =>
+        {
+            _ = bus.Get($"api/path/subpath_{t}");
+        }, TestContext.Current.CancellationToken)).ToArray();
+
+        await Task.WhenAll(tasks);
+    }
+
+    [Fact]
+    public async Task ConcurrentPutTransitionRace_ShouldNotCorruptMemory()
+    {
+        var bus = new VirtualBus(new RoutingTrie());
+        const int Iterations = 100000;
+        const string Path = "collision/node";
+
+        var task1 = Task.Run(() => 
+        {
+            for (var i = 0; i < Iterations; i++)
+            {
+                bus.Put(Path, i);
+            }
+        }, TestContext.Current.CancellationToken);
+
+        var task2 = Task.Run(() => 
+        {
+            for (var i = 0; i < Iterations; i++)
+            {
+                bus.Put($"{Path}/sub", "value");
+            }
+        }, TestContext.Current.CancellationToken);
+
+        await Task.WhenAll(task1, task2);
     }
 }
