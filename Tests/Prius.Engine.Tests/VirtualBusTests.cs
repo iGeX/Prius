@@ -73,7 +73,7 @@ public sealed class VirtualBusTests
         bus.Put("api/v1/users/profile", "data");
 
         Assert.Equal("profile", spy.LastRemainingPath);
-        Assert.Equal("api/v1/users", spy.LastContext!.AbsolutePath);
+        Assert.Equal("api/v1/users", ((ISystemElementContext)spy.LastContext!).AbsolutePath);
         
         spy.LastContext.Put("status", "active");
         Assert.Equal("active", bus.Get("api/v1/users/status").AsString());
@@ -309,7 +309,7 @@ public sealed class AsyncEventElement : IElement
 {
     public bool Put(IElementContext context, MapPath path, MapValue value)
     {
-        context.PutAbsolute("events/occurred", new MapValue());
+        ((ISystemElementContext)context).PutAbsolute("events/occurred", new MapValue());
         return true;
     }
 

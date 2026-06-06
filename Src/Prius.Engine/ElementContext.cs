@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using Core.Maps;
 using Abstractions;
 
-internal interface IBusContext : IElementContext
+internal interface IBusContext : ISystemElementContext
 {
     int Depth { get; }
     IElement? Owner { get; }

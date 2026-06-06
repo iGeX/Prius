@@ -2,6 +2,7 @@ namespace Prius.Engine.Tests;
 
 using Xunit;
 using Core.Maps;
+using Abstractions;
 
 public sealed class VirtualBusRoutingTests
 {
@@ -19,7 +20,7 @@ public sealed class VirtualBusRoutingTests
 
         Assert.True(deepSpy.WasExecuted);
         Assert.Equal("profile/avatar", deepSpy.LastRemainingPath);
-        Assert.Equal("api/users", deepSpy.LastContext!.AbsolutePath);
+        Assert.Equal("api/users", ((ISystemElementContext)deepSpy.LastContext!).AbsolutePath);
     }
 
     [Fact]

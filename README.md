@@ -23,6 +23,7 @@ The platform completely abandons the use of traditional Data Transfer Objects (D
 * **Unbounded Technical Connectivity**: A single data format allows any base blocks to be placed and connected on a single schema without technical limitations, adapters, or converters. All modules understand this format at a base level; however, end-to-end interface coupling does not guarantee the logical (semantic) viability of the assembled configuration.
 
 ### 3. Principle of Dynamic Transformation
-Deployment and lifecycle management of applications within the platform are built upon a self-modifying execution environment.
-* **Universal Template**: The physical element of deployment on a target node is a lightweight universal application that initially contains no specific business logic.
-* **Declarative Upgrade**: Upon startup, this application connects to the central metadata database, determines its archetype, pulls the required packages, and dynamically transforms itself into the specific target application described in the blueprints.
+Deployment and lifecycle management of applications within the platform are built upon a self-modifying execution environment governed by system-level metadata.
+* **System Metadata & Migration Log**: At the system level, there is no concept of a bus. System metadata is stored in RavenDB as a snapshot of the system description, derived by sequentially applying a log of migrations.
+* **Universal Template**: The physical element of deployment on a target node is a lightweight host application statically linked only with the RavenDB client, the `VirtualBus` runtime, and the `Bootstrap` orchestrator.
+* **Declarative Upgrade**: Upon startup, the node reads its target Archetype (and optional identifier) from environment variables or command-line arguments. It queries the central RavenDB system metadata snapshot to retrieve its configuration. Based on this, it dynamically downloads the required assembly packages (modules), loads them into an isolated context (ALC), compiles its local `VirtualBus` tree, and transforms itself into the target application.

@@ -130,7 +130,12 @@ public sealed class DataIntentsProcessor(
         _ => intent.GetType().Name
     };
     
-    private static void ReportSuccess(IIntent i, MapValue value) => i.Context.Put(i.SuccessPath, value);
+    private static void ReportSuccess(IIntent i, MapValue value)
+    {
+        var sysCtx = (ISystemElementContext)i.Context;
+        var absolutePath = new MapPath(sysCtx.AbsolutePath.AsSpan()) + new MapPath(i.SuccessPath.AsSpan());
+        sysCtx.PutAbsolute(absolutePath, value);
+    }
     
     private static void ReportFailure(IIntent i, string message, string type)
     {
@@ -139,7 +144,10 @@ public sealed class DataIntentsProcessor(
             ("Message", message), 
             ("Type", type)
         ]);
-        i.Context.Put(i.FailurePath, failureMap.AsMapValue());
+        
+        var sysCtx = (ISystemElementContext)i.Context;
+        var absolutePath = new MapPath(sysCtx.AbsolutePath.AsSpan()) + new MapPath(i.FailurePath.AsSpan());
+        sysCtx.PutAbsolute(absolutePath, failureMap.AsMapValue());
     }
 
     private static void ReportFailure(IIntent i, Exception ex) => ReportFailure(i, ex.Message, ex.GetType().Name);
@@ -502,10 +510,13 @@ public sealed class DataIntentsProcessor(
                     await using var worker = holder.Store.Subscriptions.GetSubscriptionWorker<BlittableJsonReaderObject>(options);
                     await worker.Run(async batch =>
                     {
+                        var sysCtx = (ISystemElementContext)i.Context;
                         foreach (var item in batch.Items)
                         {
                             var map = await item.Result.AsJsonReaderMap();
-                            i.Context.Put($"{i.SubscriptionPath}/{item.Id}", map.AsMapValue());
+                            var relativePath = new MapPath(i.SubscriptionPath.AsSpan()) + new MapPath(item.Id.AsSpan());
+                            var absolutePath = new MapPath(sysCtx.AbsolutePath.AsSpan()) + relativePath;
+                            sysCtx.PutAbsolute(absolutePath, map.AsMapValue());
                         }
                     }, i.Token);
                 }

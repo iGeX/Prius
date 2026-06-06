@@ -26,7 +26,7 @@ public sealed class VirtualBusGetTests
 
         public MapValue Get(IElementContext context, MapPath path)
         {
-            if (context.CallerSegment == "theme") return "dynamic_dark";
+            if (((ISystemElementContext)context).CallerSegment == "theme") return "dynamic_dark";
             return new MapValue();
         }
     }

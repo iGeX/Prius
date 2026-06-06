@@ -3,7 +3,7 @@ using Prius.Engine.Abstractions;
 
 namespace Prius.Data.RavenDB.Tests;
 
-public class MockElementContext : IElementContext
+public class MockElementContext : ISystemElementContext
 {
     public string AbsolutePath { get; set; } = string.Empty;
     public string CallerSegment { get; set; } = string.Empty;
