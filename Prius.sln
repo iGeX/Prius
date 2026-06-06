@@ -6,7 +6,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		.editorconfig = .editorconfig
 		.gitignore = .gitignore
 		Directory.Build.props = Directory.Build.props
-		README.md = README.md
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Src", "Src", "{827E0CD3-B72D-47B6-A68D-7590B98EB39B}"
@@ -44,6 +43,14 @@ EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Prius.PackagesRegistry", "Src\Prius.PackagesRegistry\Prius.PackagesRegistry.csproj", "{7E9BABF0-6D9E-450D-86B1-341F891CD922}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Prius.PackagesRegistry.Tests", "Tests\Prius.PackagesRegistry.Tests\Prius.PackagesRegistry.Tests.csproj", "{B5DF5A21-63B5-40AD-AC5F-9C55510D0BB8}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{206E7C00-7E01-4DE4-940B-604DD04D7A19}"
+	ProjectSection(SolutionItems) = preProject
+		README.md = README.md
+		Docs\PriusCodingGuidelines.md = Docs\PriusCodingGuidelines.md
+		Docs\PriusCoreGuidelines.md = Docs\PriusCoreGuidelines.md
+		Docs\PriusEngineGuidelines.md = Docs\PriusEngineGuidelines.md
+	EndProjectSection
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -117,5 +124,6 @@ Global
 		{C5EFBB8E-D770-401E-9F0E-8E4D30CE613B} = {B7475C11-1D15-4672-8ACF-58EEF183CF3D}
 		{7E9BABF0-6D9E-450D-86B1-341F891CD922} = {8854C0A4-DCDC-43F0-9119-84ABE2079BB1}
 		{B5DF5A21-63B5-40AD-AC5F-9C55510D0BB8} = {9AE799E0-73D0-4ACD-8C37-7CEDBA54551C}
+		{206E7C00-7E01-4DE4-940B-604DD04D7A19} = {089100B1-113F-4E66-888A-E83F3999EAFD}
 	EndGlobalSection
 EndGlobal

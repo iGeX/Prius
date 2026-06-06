@@ -1,21 +1,21 @@
 # Prius.Data.RavenDB
 
-Адаптер для интеграции с RavenDB как основного хранилища данных. Реализует паттерн обработки намерений (Intents).
+Adapter for integration with RavenDB as the primary data store. Implements the Intent processing pattern.
 
-## Обработка намерений
-- **`DataIntentsProcessor`**: Главный цикл обработки, слушающий очередь интентов (`IDataIntentsProvider`) и транслирующий их в команды RavenDB. Поддерживает graceful shutdown через `CancellationToken` (при стазисе системы).
-- **`RqlBuilder`**: Декларативный компилятор, транслирующий `QueryMap` в безопасный RQL.
+## Intent Processing
+* **`DataIntentsProcessor`**: The main processing loop that listens to the intent queue (`IDataIntentsProvider`) and translates them into RavenDB commands. It supports graceful shutdown via a `CancellationToken` during system stasis.
+* **`RqlBuilder`**: A declarative compiler that translates a `QueryMap` into safe RQL.
 
-## Инфраструктура
-- **`DocumentStoreHolder`**: Потокобезопасный провайдер `IDocumentStore` с динамическим обновлением конфигураций и сертификатов.
-- **`RavenPackageRepository`**: Реализация `IPackageRepository` для RavenDB. Поддерживает жизненный цикл системы:
-  - `OnTransitionToStasis`: Очистка кэша манифестов.
-  - `OnTransitionToActive`: Инициализация репозитория.
+## Infrastructure
+* **`DocumentStoreHolder`**: A thread-safe provider of `IDocumentStore` featuring dynamic configuration and certificate updates.
+* **`RavenPackageRepository`**: An implementation of `IPackageRepository` for RavenDB. It supports the system lifecycle:
+    * `OnTransitionToStasis`: Manifest cache clearance.
+    * `OnTransitionToActive`: Repository initialization.
 
-## Специфические функции
-- **ID Materialization**: Детерминированное создание составных идентификаторов для результатов Map-Reduce.
-- **Parallel Data Extraction**: Прямое извлечение метаданных Lucene и связанных документов из HTTP-потока RavenDB без использования тяжелых LINQ-оберток.
-- **Attachments**: Потоковая передача вложений через `IBinaryManager`.
+## Specialized Features
+* **ID Materialization**: Deterministic creation of composite identifiers for Map-Reduce results.
+* **Parallel Data Extraction**: Direct extraction of Lucene metadata and associated documents from the RavenDB HTTP stream, bypassing heavy LINQ wrappers.
+* **Attachments**: Streaming transmission of attachments via the `IBinaryManager`.
 
 ---
-Подробная спецификация запросов приведена в файле `QueryMap.md`.
+A detailed query specification is provided in the `QueryMap.md` file.

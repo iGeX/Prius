@@ -1,36 +1,34 @@
 # Prius.Core
 
-Ядро фреймворка, содержащее основные абстракции данных и механизмы сериализации.
+Core framework project containing fundamental data abstractions and serialization mechanisms.
 
-## Базовые интерфейсы
+## Base Interfaces
 
-- **`IPocoModel`**: Маркерный интерфейс для POCO-моделей. Используется для автоматического обнаружения производных типов при полиморфной сериализации.
+* **IPocoModel**: A marker interface for POCO models. Used for automatic discovery of derived types during polymorphic serialization.
 
-## Система Maps (Абстракция данных)
+## Maps System (Data Abstraction)
 
-Центральная часть проекта, предоставляющая унифицированный интерфейс доступа к данным.
+The central part of the project that provides a unified interface for data access.
 
-### Интерфейсы и базовые типы
-- **`IMap`**: Основной интерфейс синхронного словаря (key-value). Поддерживает иерархический доступ.
-- **`IAsyncMap`**: Интерфейс для асинхронных операций с картами данных.
-- **`MapValue`**: Универсальная структура-контейнер для значений. Может содержать `IMap`, примитив (string, long, bool, decimal, DateTimeOffset) или быть пустой (`Empty`). Поддерживает неявные преобразования типов.
-- **`MapPath`**: Структура для работы с путями в иерархии Map (например, `user/profile/name`). Поддерживает экранирование разделителей.
+### Interfaces and Base Types
+* **IMap**: The primary synchronous key-value dictionary interface. Supports hierarchical traversal and access.
+* **MapValue**: A universal value container structure. It can encapsulate an `IMap`, a primitive scalar (string, long, bool, decimal, DateTimeOffset), or be empty (`Empty`). Supports implicit type conversions.
+* **MapPath**: A struct used for traversing hierarchical paths within Maps (e.g., `user/profile/name`). Supports delimiter escaping.
 
-### Реализации IMap
-- **`DictionaryMap`**: Реализация на базе стандартного `IDictionary`.
-- **`ListMap`**: Адаптер для `IList`, где ключами выступают строковые индексы.
-- **`JsonReaderMap`**: Высокопроизводительная реализация, читающая данные напрямую из JSON (`ReadOnlyMemory<byte>`) с ленивой материализацией.
-- **`PocoModelMap`**: Адаптер, предоставляющий доступ к свойствам объекта `IPocoModel` через интерфейс `IMap` (использует кешированную рефлексию).
-- **`StackedMap`**: Композитная карта, объединяющая несколько `IMap`. Позволяет накладывать слои данных друг на друга (последний добавленный имеет приоритет).
-- **`ReadOnlyMap`**: Обертка, запрещающая модификацию исходной карты.
-- **`AsyncMapAdapter`**: Адаптирует синхронный `IMap` к интерфейсу `IAsyncMap`.
+### IMap Implementations
+* **DictionaryMap**: An implementation built upon the standard `IDictionary`.
+* **ListMap**: An adapter for `IList` where string-based array indexes serve as keys.
+* **JsonReaderMap**: A high-performance implementation that parses data directly from JSON (`ReadOnlyMemory<byte>`) utilizing lazy materialization.
+* **PocoModelMap**: An adapter providing access to properties of an `IPocoModel` object through the `IMap` interface using cached reflection.
+* **StackedMap**: A composite map that overlays multiple `IMap` instances. It allows stacking data layers where the most recently added layer takes precedence.
+* **ReadOnlyMap**: A protective wrapper that prevents any mutations to the underlying map.
 
-### Расширения и утилиты
-- **`MapExtensions`**: Основной набор методов расширения для `IMap` и `MapValue`: глубокое копирование, сравнение, сериализация в JSON, работа по путям (`MapPath`).
-- **`MapTaskExtensions` / `MapValueTaskExtensions`**: Методы расширения для удобной работы с `Task` и `ValueTask`, возвращающими карты или их значения.
-- **`MapDebugView`**: Вспомогательный класс для удобного отображения содержимого карт в отладчике Visual Studio.
+### Extensions and Utilities
+* **MapExtensions**: The primary suite of extension methods for `IMap` and `MapValue` covering deep copying, structural validation, JSON serialization, and path-based operations (`MapPath`).
+* **MapTaskExtensions / MapValueTaskExtensions**: Utility extension methods for seamless asynchronous operations using `Task` and `ValueTask` that return maps or map values.
+* **MapDebugView**: A proxy class for enhanced visualization of map structures inside the Visual Studio debugger.
 
-## JSON Сериализация
+## JSON Serialization
 
-- **`JsonDefaults`**: Статические настройки для `JsonSerializerOptions`, используемые в проекте.
-- **`PocoModelTypeInfoResolver`**: Кастомный резолвер для `System.Text.Json`, обеспечивающий полиморфную сериализацию типов, реализующих `IPocoModel`, с использованием дискриминатора `$type`.
+* **JsonDefaults**: Static global `JsonSerializerOptions` utilized throughout the ecosystem.
+* **PocoModelTypeInfoResolver**: A custom metadata resolver for `System.Text.Json` providing polymorphic type serialization for entities implementing `IPocoModel` via the `$type` discriminator.

@@ -1,115 +1,28 @@
-# Конструктор информационных систем Prius
-## Спецификация уровня солюшена (Solution Level)
+# PRIUS: System Architecture & Execution Framework
 
-## 🎯 Архитектурный стек и ограничения среды
-* **Платформа**: .NET 10 / C# 14
-* **Парадигма**: Детерминированная гомогенная среда исполнения.
-* **Базовый примитив**: `IMap` (Иерархический граф «ключ-значение»).
-* **Адресация**: Навигация по путям через `MapPath` (`ref struct` над `ReadOnlySpan<char>`).
+## AI Agent Execution & Behavior Rules
 
----
-
-## 🏛️ Архитектурные манифесты
-
-### 1. Единое пространство данных («Вселенная как Мапа»)
-* **Отказ от DTO и версионности**: Вся вселенная Prius (метаданные, оперативные данные, конфигурация инфраструктуры) — это единый иерархический граф формата `IMap`, адресуемый по путям `MapPath`.
-* **Отказ от списочных структур**: Массивы и классические списки отсутствуют. Порядок элементов задается сопроводительными `Order`-мапами с ключами вида `"0"`, `"1"`, `"2"`, значениями которых выступают ключи упорядочиваемой мапы. Это гарантирует унифицированный пайплайн обработки.
-* **Discriminated Union на примитивах**: Ограниченный набор примитивов внутри `MapValue` (`string`, `long`, `bool`, `decimal`, `DateTimeOffset`, `IMap`) минимизирует комплексность и обеспечивает zero-allocation концепты на горячих путях.
-* **Hierarchy of State**: Дерево путей представляет собой иерархию состояний в памяти шины. Компоненты бизнес-логики (Элементы) являются Stateless-синглтонами, не хранят состояние в собственных полях, а используют исключительно общую память шины.
-
-### 2. Абсолютный детерминизм и целостность
-* **Защита от дрейфа конфигурации**: Система опирается на триаду: **Лог эволюции + Снапшот метаданных + Криптографическое хеширование**. Любое несанкционированное ручное вмешательство в метаданные в обход движка превращает систему в «кирпич».
-* **Инфраструктура как данные (Self-Organizing Nodes)**: Процесс DevOps упразднен. Ноды изначально пусты, они содержат только бутстраппер и строку подключения. При старте нода читает из базы свою схему конфигурации, скачивает скомпилированные сборки (бинарное мясо) с кешированем через `IBinaryAccessor`, и организует себя сама.
-* **Declarative by design**: Вся конфигурация, маршруты и связи задаются декларативно в виде путей (`MapPath`). Рантайм является чистым исполнителем воли метаданных. `Components` представляют собой декларативные чертежи (Blueprints), которые рекурсивно раскрываются подсистемой до составляющих элементов.
-* **Convention over configuration**: Изоляция контекстов и трансляция координат происходят автоматически на основе геометрии путей, без явных инструкций со стороны бизнес-логики.
-
-### 3. Отказоустойчивость и полиморфизм
-* **Разделение данных**: Жесткая целостность обеспечивается только для метаданных системы.
-* **Fault-tolerance по дизайну**: Метаданные способны работать с любыми оперативными данными, рядом с которыми себя обнаружат. Все, что не ожидается текущей версией логики — игнорируется. Все, что отсутствует или не соответствует ожиданиям, приводит к дефолтным значениям (`new MapValue()`), но никогда не вызывает катастрофических сбоев.
-
-## 🏗️ Инфраструктура Ядра (Prius.Engine)
-
-### 1. Жизненный цикл и Модульность (Bootstrap)
-* **`Bootstrap`**: Центральный оркестратор жизненного цикла ноды (перевод в состояния активации или стазиса). Реализует рекурсивную загрузку пакетов, автоматическое обнаружение модулей (`IPriusModule`), регистрацию элементов (`IElement`) и управление локальным DI-контейнером.
-* **`BusConfigurationProvider` / `ConfigurationElement`**: Обеспечивают мост между памятью виртуальной шины (выделенный путь `/Configuration`) и стандартным механизмом `.NET IConfiguration`. Реализуют реактивное обновление параметров инфраструктуры через `IOptionsMonitor`.
-* **`BinaryManager`**: Отвечает за эффективное управление бинарными потоками (бинарным мясом) с агрессивным кешированием в оперативной памяти и автоматическим вытеснением на диск при достижении лимитов.
-
-### 2. Пакетный менеджер и Динамический импорт (NuGet/Nuspec)
-* **`NuspecMapper`**: Утилита трансформации XML-манифестов пакетов (`.nuspec`) в унифицированный граф `IMap`.
-* **`PackageImporter`**: Потоковый импорт NuGet-пакетов (`.nupkg`), валидация криптографических хэшей файлов и генерация иерархической структуры зависимых активов внутри ноды.
-* **`PackageExporter`**: Сборка и экспорт манифеста и активов из репозитория ноды обратно в бинарный формат `.nupkg`.
-* **`PackageResolver`**: Детерминированное разрешение графа зависимостей пакетов с жесткой валидацией TFM-совместимости (Target Framework Moniker) и построением строгого порядка инициализации сборок.
+* **Pre-requisites**: Before generating any code, strictly read and apply the formatting and structural constraints defined in the `./Docs/PriusCodingGuidelines.md` file.
+* **Strict Context Isolation**: You are strictly forbidden from independently exploring, indexing, or reading any files within the repository. You must operate exclusively on the exact files provided by the user via @ references in the current session context.
+* **Additional File Requests**: If you determine that the task cannot be completed without examining an unprovided file, you must stop execution immediately. Clearly state the specific file needed and explain why it is required, then wait for the user to either provide it via @ reference or explicitly state that it is not needed. If the user explicitly states the file is not needed, you must deductively derive the necessary signatures or semantics from the existing context and examples.
+* **Mandatory Planning Phase**: Do not modify files or write code immediately. First, provide a clear, textual architectural plan of the changes, listing the exact files you intend to modify, and wait for explicit user approval ("Approve" or "Proceed").
+* **Absolute Exit Condition**: Once the specific task defined in the session is completed and verified, stop execution immediately. Do not attempt to optimize code outside the scope or independently look for further improvements in adjacent modules.
 
 ---
 
-## 📐 Модель вычислений: "Physics of Prius"
-Взаимодействие внутри системы жестко разделено на два изолированных конвейера: строго синхронный логический такт шины и фоновый I/O барьер (Data Intents).
+## PRIUS: Architectural Essence
 
-### 1. Unidirectional Flow (Однонаправленный поток)
-* Сигналы текут строго сверху вниз через вызовы `Put`. Механизм `Notify` (баблинг событий вверх) полностью упразднен.
-* Реакция на изменения происходит либо через прямой спуск сигналов (`Put`), либо через фоновое выполнение намерений (`Intents`), которые возвращают результат в корень шины через `PutAbsolute`.
-* **Изоляция тактов (Next Tick)**: Прямые синхронные вызовы `Put` изнутри текущего такта обработки (встречные токи) запрещены для исключения Deadlocks. Новые импульсы откладываются шиной на следующий чистый логический такт.
-* **Консистентность слепка**: Отложенный такт выполняется на базе оригинального, замороженного лога контекстов и его `Env`. Интенты по завершении делают `Put` в пути `SuccessPath` или `FailurePath`, на изменения которых завязаны нижестоящие элементы.
+### 1. Concept: Declarative System Constructor
+Prius is a platform designed for the declarative design, assembly, and orchestration of distributed software systems.
+* **Blueprint-Driven Management**: The entire architecture, topology, and connection logic between components are derived completely from metadata.
+* **Description Isolation**: System design is fully decoupled from the execution environment. The system description remains static and deterministic, while runtime mechanisms merely interpret these rules in real time.
 
-### 2. Stateless Logic (Без состояния)
-* Элементы (элементы) атомарны и не имеют внутреннего состояния. Они работают с общей памятью шины через `ElementContext`.
-* Контекст гарантирует доступ к памяти именно в той точке монтирования (mount point), где находится элемент. При погружении `VirtualBus` формирует неизменяемый связный список `ElementContext` (стек вызовов), хранящий сегмент пути, ссылку на родителя и замороженный снимок окружения (`Env`).
+### 2. Homogeneous Data Environment
+The platform completely abandons the use of traditional Data Transfer Objects (DTOs) and custom POCO models.
+* **IMap Abstraction**: All entities, signals, configurations, and state structures are homogeneous and operate exclusively through the base primitives `IMap` and `MapValue` (maps or scalars).
+* **Unbounded Technical Connectivity**: A single data format allows any base blocks to be placed and connected on a single schema without technical limitations, adapters, or converters. All modules understand this format at a base level; however, end-to-end interface coupling does not guarantee the logical (semantic) viability of the assembled configuration.
 
-### 3. Управление состоянием элементов (Скрытые пути `$`)
-* Для гарантированного предотвращения конфликтов между скалярным значением узла (например, признаком включения) и его дочерними ветками (бизнес-данными), элементы используют соглашение о скрытых системных путях.
-* Внутреннее состояние самого элемента (например, признак открыт/закрыт для `GateElement`) пишется и читается в дочернем узле с префиксом `$` (например, `$Active`).
-* Запись пользовательских бизнес-данных в `gate/some/path` гарантированно не затирает управляющий флаг самого `gate`.
-
-### 4. Implicit Memory Fallthrough ("No Wormholes")
-* Если элемент делает `context.Put("sub/path", value)` и по этому пути не зарегистрирован другой элемент — данные автоматически записываются в узел памяти шины (`BusMemoryNode`) по этому относительному пути.
-* Это позволяет элементам использовать вложенные пути как встроенное DTO-хранилище и полноценное локальное состояние без выделения лишней памяти и объявления структур бд.
-* **`EmptyElement`**: Реализует паттерн Null Object для прозрачной обработки несуществующих путей без генерации исключений.
-* **Защита от зацикливания**: Любые запросы с пустым относительным путем (ведущие в корень самого себя) или не продвигающие координатную сетку вглубь, отбрасываются на уровне входных методов шины.
-
-### 5. Потоковая семантика сигналов (Truthy Semantics)
-* Обработка наличия сигнала и ветвления логики подчиняются унифицированной булевой логике метода `MapValue.AsBool()`.
-* **`true`**: Непустая карта (`IMap` со свойствами), числовое значение не равное нулю (`!= 0`), строковое значение не пустое и не эквивалентное `"false"`.
-* **`false`**: Состояние `MapValue.Empty`, число `0`, пустая строка `""`, строковый литерал `"false"`.
-
-## 🏗️ Инфраструктура Ядра (Prius.Engine)
-
-### 1. Жизненный цикл и Модульность (Bootstrap)
-* **`Bootstrap`**: Центральный оркестратор жизненного цикла ноды (перевод в состояния активации или стазиса). Реализует рекурсивную загрузку пакетов, автоматическое обнаружение модулей (`IPriusModule`), регистрацию элементов (`IElement`) и управление локальным DI-контейнером.
-* **`BusConfigurationProvider` / `ConfigurationElement`**: Обеспечивают мост между памятью виртуальной шины (выделенный путь `/Configuration`) и стандартным механизмом `.NET IConfiguration`. Реализуют реактивное обновление параметров инфраструктуры через `IOptionsMonitor`.
-* **`BinaryManager`**: Отвечает за эффективное управление бинарными потоками (бинарным мясом) с агрессивным кешированием в оперативной памяти и автоматическим вытеснением на диск при достижении лимитов.
-
-### 2. Пакетный менеджер и Динамический импорт (NuGet/Nuspec)
-* **`NuspecMapper`**: Утилита трансформации XML-манифестов пакетов (`.nuspec`) в унифицированный граф `IMap`.
-* **`PackageImporter`**: Потоковый импорт NuGet-пакетов (`.nupkg`), валидация криптографических хэшей файлов и генерация иерархической структуры зависимых активов внутри ноды.
-* **`PackageExporter`**: Сборка и экспорт манифеста и активов из репозитория ноды обратно в бинарный формат `.nupkg`.
-* **`PackageResolver`**: Детерминированное разрешение графа зависимостей пакетов с жесткой валидацией TFM-совместимости (Target Framework Moniker) и построением строгого порядка инициализации сборок.
-
----
-
-## 📐 Модель вычислений: "Physics of Prius"
-Взаимодействие внутри системы жестко разделено на два изолированных конвейера: строго синхронный логический такт шины и фоновый I/O барьер (Data Intents).
-
-### 1. Unidirectional Flow (Однонаправленный поток)
-* Сигналы текут строго сверху вниз через вызовы `Put`.
-* Реакция на изменения происходит либо через прямой спуск сигналов (`Put`), либо через фоновое выполнение намерений (`Intents`), которые возвращают результат в шину через `Put` или `PutAbsolute` захваченного контекста.
-* **Изоляция тактов (Next Tick)**: Прямые синхронные вызовы `Put` изнутри текущего такта обработки (встречные токи) запрещены для исключения Deadlocks. Новые импульсы откладываются шиной на следующий чистый логический такт.
-
-### 2. Stateless Logic (Без состояния)
-* Элементы (элементы) атомарны и не имеют внутреннего состояния. Они работают с общей памятью шины через `ElementContext`.
-* Контекст гарантирует доступ к памяти именно в той точке монтирования (mount point), где находится элемент. При погружении `VirtualBus` формирует неизменяемый связный список `ElementContext` (стек вызовов), хранящий сегмент пути, ссылку на родителя и замороженный снимок окружения (`Env`).
-
-### 3. Управление состоянием элементов (Скрытые пути `$`)
-* Для гарантированного предотвращения конфликтов между скалярным значением узла (например, признаком включения) и его дочерними ветками (бизнес-данными), элементы используют соглашение о скрытых системных путях.
-* Внутреннее состояние самого элемента (например, признак открыт/закрыт для `GateElement`) пишется и читается в дочернем узле с префиксом `$` (например, `$Active`).
-* Запись пользовательских бизнес-данных в `gate/some/path` гарантированно не затирает управляющий флаг самого `gate`.
-
-### 4. Implicit Memory Fallthrough ("No Wormholes")
-* Если элемент делает `context.Put("sub/path", value)` и по этому пути не зарегистрирован другой элемент — данные автоматически записываются в узел памяти шины (`BusMemoryNode`) по этому относительному пути.
-* Это позволяет элементам использовать вложенные пути как встроенное DTO-хранилище и полноценное локальное состояние без выделения лишней памяти и объявления структур бд.
-* **`EmptyElement`**: Реализует паттерн Null Object для прозрачной обработки несуществующих путей без генерации исключений.
-* **Защита от зацикливания**: Любые запросы с пустым относительным путем (ведущие в корень самого себя) записывают данные в память шины по этому пути и завершают такт.
-
-### 5. Потоковая семантика сигналов (Truthy Semantics)
-* Обработка наличия сигнала и ветвления логики подчиняются унифицированной булевой логике метода `MapValue.AsBool()`.
-* **`true`**: Непустая карта (`IMap` со свойствами), числовое значение не равное нулю (`!= 0`), строковое значение не пустое и не эквивалентное `"false"`.
-* **`false`**: Состояние `MapValue.Empty`, число `0`, пустая строка `""`, строковый литерал `"false"`.
+### 3. Principle of Dynamic Transformation
+Deployment and lifecycle management of applications within the platform are built upon a self-modifying execution environment.
+* **Universal Template**: The physical element of deployment on a target node is a lightweight universal application that initially contains no specific business logic.
+* **Declarative Upgrade**: Upon startup, this application connects to the central metadata database, determines its archetype, pulls the required packages, and dynamically transforms itself into the specific target application described in the blueprints.
