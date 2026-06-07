@@ -124,10 +124,8 @@ public sealed class DataIntentsProcessor(
 
         var queuedWrites = new List<IIntent>();
         var streamsToDispose = new List<Stream>();
-        var hasFailure = false;
         Exception? failureException = null;
-
-        // Phase 1: Execute intents on the shared session
+        
         foreach (var intent in tx.Intents)
         {
             if (ct.IsCancellationRequested)
@@ -149,19 +147,16 @@ public sealed class DataIntentsProcessor(
             catch (Exception ex)
             {
                 logger.LogError(ex, "Transaction step failed for intent: {IntentInfo}", GetFullIntentInfo(intent));
-                hasFailure = true;
                 failureException = ex;
                 
-                // If it's a read/immediate, we should report its failure
                 if (!IsWrite(intent)) 
                     ReportFailure(intent, ex);
 
-                break; // Abort the transaction immediately
+                break;
             }
         }
-
-        // Phase 2: Save changes if no failure occurred
-        if (!hasFailure && queuedWrites.Count > 0)
+        
+        if (failureException is null && queuedWrites.Count > 0)
         {
             var retryCount = 0;
             while (true)
@@ -170,11 +165,8 @@ public sealed class DataIntentsProcessor(
                 {
                     await session.SaveChangesAsync(ct);
                     
-                    // Success! Report success for all queued writes
-                    foreach (var intent in queuedWrites)
-                    {
+                    foreach (var intent in queuedWrites) 
                         ReportSuccess(intent, true);
-                    }
                     break;
                 }
                 catch (OperationCanceledException)
@@ -184,7 +176,6 @@ public sealed class DataIntentsProcessor(
                 catch (Exception ex) when (IsFatal(ex))
                 {
                     logger.LogError(ex, "Fatal error committing transaction");
-                    hasFailure = true;
                     failureException = ex;
                     break;
                 }
@@ -194,7 +185,6 @@ public sealed class DataIntentsProcessor(
                     retryCount++;
                     if (retryCount >= MaxRetries)
                     {
-                        hasFailure = true;
                         failureException = ex;
                         break;
                     }
@@ -204,8 +194,7 @@ public sealed class DataIntentsProcessor(
                 }
             }
         }
-
-        // Dispose streams after SaveChangesAsync completes
+        
         foreach (var stream in streamsToDispose)
         {
             try
@@ -218,16 +207,13 @@ public sealed class DataIntentsProcessor(
             }
         }
 
-        // If transaction failed, report failure for all write intents in the transaction
-        if (hasFailure && failureException != null)
+        if (failureException is null)
+            return;
+        
+        foreach (var intent in tx.Intents)
         {
-            foreach (var intent in tx.Intents)
-            {
-                if (IsWrite(intent))
-                {
-                    ReportFailure(intent, failureException);
-                }
-            }
+            if (IsWrite(intent))
+                ReportFailure(intent, failureException);
         }
     }
 
@@ -437,12 +423,11 @@ public sealed class DataIntentsProcessor(
                 var idBuilder = new StringBuilder();
                 foreach (var groupKey in groupByMap.Keys(true))
                 {
-                    if (json.TryGet(groupKey, out object val) && val != null)
-                    {
-                        if (idBuilder.Length > 0) 
-                            idBuilder.Append('/');
-                        idBuilder.Append(val);
-                    }
+                    if (!json.TryGet(groupKey, out object val) || val == null) 
+                        continue;
+                    if (idBuilder.Length > 0) 
+                        idBuilder.Append('/');
+                    idBuilder.Append(val);
                 }
                 id = idBuilder.ToString();
             }
@@ -514,11 +499,9 @@ public sealed class DataIntentsProcessor(
 
     private async Task QueueStore(IAsyncDocumentSession session, StoreIntent i)
     {
-        if (i.Document.DeepGet("@metadata/@collection").IsEmpty)
-        {
+        if (i.Document.DeepGet("@metadata/@collection").IsEmpty) 
             throw new InvalidOperationException("No @metadata/@collection specified");
-        }
-        
+
         if (logger.IsEnabled(LogLevel.Debug))
             logger.LogDebug("Queuing store document: {Id}", i.Document.Serialize());
             
@@ -665,81 +648,85 @@ public sealed class DataIntentsProcessor(
         return Task.CompletedTask;
     }
 
-    private async Task HandleNative(IAsyncDocumentSession session, NativeIntent i) => await i.Action(session, i);
+    private static async Task HandleNative(IAsyncDocumentSession session, NativeIntent i) => await i.Action(session, i);
     
-    private Task HandleSubscription(SubscriptionIntent i)
+    private async Task HandleSubscription(SubscriptionIntent i)
     {
-        try
-        {
-            var topic = i.TopicName;
+        var topic = i.TopicName;
             
-            if (_activeSubscriptions.TryGetValue(topic, out var existing))
+        if (_activeSubscriptions.TryGetValue(topic, out var existing))
+        {
+            if (!existing.ExecutionTask.IsCompleted)
             {
-                if (!existing.ExecutionTask.IsCompleted)
+                if (!existing.Cts.Token.IsCancellationRequested)
                 {
                     ReportSuccess(i, true);
-                    return Task.CompletedTask;
+                    return;
                 }
-                
-                _activeSubscriptions.TryRemove(topic, out _);
-                existing.Cts.Dispose();
-            }
 
-            var options = new SubscriptionWorkerOptions(topic)
-            {
-                Strategy = SubscriptionOpeningStrategy.WaitForFree
-            };
-
-            var cts = new CancellationTokenSource();
-            var worker = holder.Store.Subscriptions.GetSubscriptionWorker<BlittableJsonReaderObject>(options);
-            
-            var executionTask = Task.Run(async () =>
-            {
-                var retryDelay = TimeSpan.FromSeconds(2);
-                while (!cts.Token.IsCancellationRequested)
+                try
                 {
+                    await existing.ExecutionTask;
+                }
+                catch
+                {
+                    /* ignore */
+                }
+            }
+                
+            _activeSubscriptions.TryRemove(topic, out _);
+            existing.Cts.Dispose();
+        }
+
+        var options = new SubscriptionWorkerOptions(topic)
+        {
+            Strategy = SubscriptionOpeningStrategy.WaitForFree
+        };
+
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(i.Token);
+        var worker = holder.Store.Subscriptions.GetSubscriptionWorker<BlittableJsonReaderObject>(options);
+            
+        var executionTask = Task.Run(async () =>
+        {
+            var retryDelay = TimeSpan.FromSeconds(2);
+            while (!cts.Token.IsCancellationRequested)
+            {
+                try
+                {
+                    await worker.Run(async batch =>
+                    {
+                        var sysCtx = (ISystemElementContext)i.Context;
+                        foreach (var item in batch.Items)
+                        {
+                            var map = await item.Result.AsJsonReaderMap();
+                            var relativePath = new MapPath(i.SubscriptionPath.AsSpan()) + new MapPath(item.Id.AsSpan());
+                            var absolutePath = new MapPath(sysCtx.AbsolutePath.AsSpan()) + relativePath;
+                            sysCtx.PutAbsolute(absolutePath, map.AsMapValue());
+                        }
+                    }, cts.Token);
+                }
+                catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogError(ex, "Subscription worker error for topic {Topic}, retrying in {Delay}s...", topic, retryDelay.TotalSeconds);
                     try
                     {
-                        await worker.Run(async batch =>
-                        {
-                            var sysCtx = (ISystemElementContext)i.Context;
-                            foreach (var item in batch.Items)
-                            {
-                                var map = await item.Result.AsJsonReaderMap();
-                                var relativePath = new MapPath(i.SubscriptionPath.AsSpan()) + new MapPath(item.Id.AsSpan());
-                                var absolutePath = new MapPath(sysCtx.AbsolutePath.AsSpan()) + relativePath;
-                                sysCtx.PutAbsolute(absolutePath, map.AsMapValue());
-                            }
-                        }, cts.Token);
+                        await Task.Delay(retryDelay, cts.Token);
                     }
-                    catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+                    catch (OperationCanceledException)
                     {
                         break;
                     }
-                    catch (Exception ex)
-                    {
-                        logger.LogError(ex, "Subscription worker error for topic {Topic}, retrying in {Delay}s...", topic, retryDelay.TotalSeconds);
-                        try
-                        {
-                            await Task.Delay(retryDelay, cts.Token);
-                        }
-                        catch (OperationCanceledException)
-                        {
-                            break;
-                        }
                         
-                        retryDelay = TimeSpan.FromSeconds(Math.Min(30, retryDelay.TotalSeconds * 2));
-                    }
+                    retryDelay = TimeSpan.FromSeconds(Math.Min(30, retryDelay.TotalSeconds * 2));
                 }
-            }, cts.Token);
+            }
+        }, cts.Token);
 
-            _activeSubscriptions[topic] = (worker, executionTask, cts);
-            ReportSuccess(i, true);
-            return Task.CompletedTask;
-        }
-        catch (Exception exception)
-        {
-            return Task.FromException(exception);
-        }
+        _activeSubscriptions[topic] = (worker, executionTask, cts);
+        ReportSuccess(i, true);
     }
 }
