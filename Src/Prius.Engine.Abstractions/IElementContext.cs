@@ -1,3 +1,4 @@
+using System;
 using Prius.Core.Maps;
 
 namespace Prius.Engine.Abstractions;
@@ -23,5 +24,11 @@ public interface ISystemElementContext : IElementContext
     
     string CallerSegment { get; }
     
+    IElementContext? Parent { get; }
+    
     void PutAbsolute(MapPath absolutePath, MapValue value);
+    
+    event Action<ISystemElementContext> OnCompleted;
+    
+    event Action<ISystemElementContext, Exception> OnFailed;
 }

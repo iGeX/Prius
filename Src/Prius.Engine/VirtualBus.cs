@@ -33,6 +33,9 @@ internal sealed class VirtualBus(RoutingTrie routingTrie) : IBusContext, IDispos
 
     public string AbsolutePath => string.Empty;
     public string CallerSegment => string.Empty;
+    public IElementContext? Parent => null;
+    public event Action<ISystemElementContext>? OnCompleted { add { } remove { } }
+    public event Action<ISystemElementContext, Exception>? OnFailed { add { } remove { } }
 
     public int Depth => 0;
     public IElement? Owner => null;
@@ -119,6 +122,21 @@ internal sealed class VirtualBus(RoutingTrie routingTrie) : IBusContext, IDispos
                         
                         var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? (caller as ElementContext)?.CallerSegment ?? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).LastSegment;
                         var subContext = new ElementContext(this, resolveResult.Element, caller, caller.Depth + 1, callerSegment, mountPathStr, envPatch, resolveResult.StaticEnv, memoryMaps.Current, parentMap, resolveResult.MatchNode, resolveResult.MatchType);
+
+                        if (subContext.Depth == 1)
+                        {
+                            try
+                            {
+                                var result = resolveResult.Element.Put(subContext, resolveResult.RemainingPath, value);
+                                subContext.TriggerCompleted();
+                                return result;
+                            }
+                            catch (Exception ex)
+                            {
+                                subContext.TriggerFailed(ex);
+                                throw;
+                            }
+                        }
 
                         return resolveResult.Element.Put(subContext, resolveResult.RemainingPath, value);
                     }
@@ -210,6 +228,21 @@ internal sealed class VirtualBus(RoutingTrie routingTrie) : IBusContext, IDispos
                 
                 var callerSegment = string.IsNullOrEmpty(mountRelativePathStr) ? (caller as ElementContext)?.CallerSegment ?? string.Empty : new MapPath(mountRelativePathStr.AsSpan()).LastSegment;
                 var subContext = new ElementContext(this, resolveResult.Element, caller, caller.Depth + 1, callerSegment, mountPathStr, envPatch, resolveResult.StaticEnv, currentMap, parentMap, resolveResult.MatchNode, resolveResult.MatchType);
+
+                if (subContext.Depth == 1)
+                {
+                    try
+                    {
+                        var result = resolveResult.Element.Get(subContext, resolveResult.RemainingPath);
+                        subContext.TriggerCompleted();
+                        return result;
+                    }
+                    catch (Exception ex)
+                    {
+                        subContext.TriggerFailed(ex);
+                        throw;
+                    }
+                }
 
                 return resolveResult.Element.Get(subContext, resolveResult.RemainingPath);
             }

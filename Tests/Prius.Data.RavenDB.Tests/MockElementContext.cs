@@ -7,6 +7,10 @@ public class MockElementContext : ISystemElementContext
 {
     public string AbsolutePath { get; set; } = string.Empty;
     public string CallerSegment { get; set; } = string.Empty;
+    public IElementContext? Parent => null;
+    
+    public event Action<ISystemElementContext>? OnCompleted;
+    public event Action<ISystemElementContext, Exception>? OnFailed;
     
     public Dictionary<string, MapValue> PutCalls { get; } = new();
 
