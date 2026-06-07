@@ -403,9 +403,140 @@ public class BootstrapIntegrationTests : AbstractDataIntentsProcessorTests
         // 3. Stasis (should call PriusModule.Stasis and StopAsync, canceling active subscription workers)
         await bootstrap.Stasis();
 
-        // Verify that the subscription's own CTS is canceled and it is removed from active subscriptions
+        // Verify that the subscription's own CTS is canceled, and it is removed from active subscriptions
         Assert.True(subData.Cts.IsCancellationRequested);
         Assert.Empty(activeSubs);
+    }
+
+    [Fact]
+    public async Task Bootstrap_ShouldSupportReactivation()
+    {
+        var repo = new LocalMockPackageRepository();
+        
+        var manifest = JsonReaderMap.From("""
+        {
+            "Info": {
+                "id": "Prius.Data.RavenDB.Tests",
+                "version": "1.0.0"
+            },
+            "Dependencies": {},
+            "Assets": {
+                "lib": {
+                    "net10.0": {
+                        "Prius.Data.RavenDB.Tests.dll": {
+                            "hash": "some-hash"
+                        }
+                    }
+                }
+            }
+        }
+        """);
+        repo.AddPackage(manifest);
+
+        var runtime = new LocalMockBootstrapRuntimeForTestModule();
+        var metadataRegistry = new LocalMockMetadataRegistry();
+
+        ConfigurableTestModule.ConfigureCalled = false;
+        ConfigurableTestModule.ActivateCalled = false;
+        ConfigurableTestModule.StasisCalled = false;
+        ConfigurableTestModule.ShouldHangActivate = false;
+        ConfigurableTestModule.ShouldHangStasis = false;
+
+        var bootstrap = new Engine.Bootstrap(repo, runtime, metadataRegistry)
+        {
+            StartupTargets = JsonReaderMap.From("""
+            {
+                "Prius.Data.RavenDB.Tests": "1.0.0"
+            }
+            """)
+        };
+
+        var busField = typeof(Engine.Bootstrap).GetField("_bus", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(busField);
+        var bus = (IElementContext)busField.GetValue(bootstrap)!;
+        bus.Put(new MapPath("Configuration/RavenDB/Database".AsSpan()), new MapValue("TestDb"));
+
+        // 1. First Activation
+        await bootstrap.Activate();
+        Assert.True(ConfigurableTestModule.ActivateCalled);
+        
+        // Reset flags
+        ConfigurableTestModule.ActivateCalled = false;
+        ConfigurableTestModule.StasisCalled = false;
+
+        // 2. Second Activation (should automatically trigger Stasis on the first instance)
+        await bootstrap.Activate();
+        
+        Assert.True(ConfigurableTestModule.StasisCalled);
+        Assert.True(ConfigurableTestModule.ActivateCalled);
+
+        // 3. Final Stasis
+        ConfigurableTestModule.StasisCalled = false;
+        await bootstrap.Stasis();
+        Assert.True(ConfigurableTestModule.StasisCalled);
+    }
+
+    [Fact]
+    public async Task Bootstrap_ShouldDisposeRegisteredServicesOnStasis()
+    {
+        var repo = new LocalMockPackageRepository();
+        
+        var manifest = JsonReaderMap.From("""
+        {
+            "Info": {
+                "id": "Prius.Data.RavenDB.Tests",
+                "version": "1.0.0"
+            },
+            "Dependencies": {},
+            "Assets": {
+                "lib": {
+                    "net10.0": {
+                        "Prius.Data.RavenDB.Tests.dll": {
+                            "hash": "some-hash"
+                        }
+                    }
+                }
+            }
+        }
+        """);
+        repo.AddPackage(manifest);
+
+        var runtime = new LocalMockBootstrapRuntimeForTestModule();
+        var metadataRegistry = new LocalMockMetadataRegistry();
+
+        var bootstrap = new Engine.Bootstrap(repo, runtime, metadataRegistry)
+        {
+            StartupTargets = JsonReaderMap.From("""
+            {
+                "Prius.Data.RavenDB.Tests": "1.0.0"
+            }
+            """)
+        };
+
+        var busField = typeof(Engine.Bootstrap).GetField("_bus", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(busField);
+        var bus = (IElementContext)busField.GetValue(bootstrap)!;
+        bus.Put(new MapPath("Configuration/RavenDB/Database".AsSpan()), new MapValue("TestDb"));
+
+        DisposableTestService.Disposed = false;
+        ConfigurableTestModule.ConfigureCalled = false;
+        ConfigurableTestModule.ActivateCalled = false;
+        ConfigurableTestModule.StasisCalled = false;
+        ConfigurableTestModule.ShouldHangActivate = false;
+        ConfigurableTestModule.ShouldHangStasis = false;
+
+        await bootstrap.Activate();
+        
+        var serviceProviderField = typeof(Engine.Bootstrap).GetField("_serviceProvider", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(serviceProviderField);
+        var serviceProvider = (IServiceProvider)serviceProviderField.GetValue(bootstrap)!;
+        var service = serviceProvider.GetRequiredService<DisposableTestService>();
+        Assert.NotNull(service);
+        Assert.False(DisposableTestService.Disposed);
+
+        await bootstrap.Stasis();
+        
+        Assert.True(DisposableTestService.Disposed);
     }
 }
 
@@ -418,7 +549,11 @@ public sealed class ConfigurableTestModule : IPriusModule
     public static bool ShouldHangActivate;
     public static bool ShouldHangStasis;
 
-    public void ConfigureServices(IServiceCollection services, IConfiguration configuration) => ConfigureCalled = true;
+    public void ConfigureServices(IServiceCollection services, IConfiguration configuration)
+    {
+        ConfigureCalled = true;
+        services.AddSingleton<DisposableTestService>();
+    }
 
     public async ValueTask Activate(IServiceProvider serviceProvider, IConfiguration configuration, CancellationToken ct)
     {
@@ -435,4 +570,11 @@ public sealed class ConfigurableTestModule : IPriusModule
         if (ShouldHangStasis)
             await Task.Delay(-1, ct);
     }
+}
+
+internal sealed class DisposableTestService : IDisposable
+{
+    public static bool Disposed;
+
+    public void Dispose() => Disposed = true;
 }
