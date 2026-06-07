@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -83,13 +83,14 @@ public sealed class Bootstrap
                 .Build();
 
             services.AddSingleton<IConfiguration>(config);
-            services.AddLogging(builder => builder.AddConfiguration(config.GetSection("Logging")).AddConsole());
+            services.AddLogging(builder => builder.AddConsole());
             
             var registry = new DataIntentsRegistry();
             registry.ExitStasis();
             services.AddSingleton<IDataIntentsRegistry>(registry);
             services.AddSingleton<IDataIntentsProvider>(registry);
             services.AddSingleton<IElementContext>(_bus);
+            services.AddSingleton<IBinaryManager>(new BinaryManager());
 
             foreach (var module in _modules) 
                 module.ConfigureServices(services, config);

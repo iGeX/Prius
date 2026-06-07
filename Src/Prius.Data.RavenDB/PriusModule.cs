@@ -57,11 +57,11 @@ public sealed class PriusModule : IPriusModule
             }
             catch (OperationCanceledException)
             {
-                // Timeout or cancellation is expected
+                Console.WriteLine("[SHUTDOWN] DataIntentsProcessor stasis waiting timed out or was cancelled.");
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Ignore execution task errors during shutdown
+                Console.WriteLine($"[SHUTDOWN] DataIntentsProcessor encountered an error during stasis: {ex}");
             }
         }
 
