@@ -171,150 +171,6 @@ public class BootstrapIntegrationTests : AbstractDataIntentsProcessorTests
         public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 
-    [Fact]
-    public async Task Bootstrap_ShouldGracefullyHandleHungModule()
-    {
-        var repo = new LocalMockPackageRepository();
-        
-        var manifest = JsonReaderMap.From("""
-        {
-            "Info": {
-                "id": "Prius.Data.RavenDB.Tests",
-                "version": "1.0.0"
-            },
-            "Dependencies": {},
-            "Assets": {
-                "lib": {
-                    "net10.0": {
-                        "Prius.Data.RavenDB.Tests.dll": {
-                            "hash": "some-hash"
-                        }
-                    }
-                }
-            }
-        }
-        """);
-        repo.AddPackage(manifest);
-
-        var runtime = new LocalMockBootstrapRuntimeForTestModule();
-        var metadataRegistry = new LocalMockMetadataRegistry();
-
-        // Test 1: Hang on Activate
-        ConfigurableTestModule.ConfigureCalled = false;
-        ConfigurableTestModule.ActivateCalled = false;
-        ConfigurableTestModule.StasisCalled = false;
-        ConfigurableTestModule.ShouldHangActivate = true;
-        ConfigurableTestModule.ShouldHangStasis = false;
-
-        var bootstrapActivateHang = new Engine.Bootstrap(repo, runtime, metadataRegistry)
-        {
-            StartupTargets = JsonReaderMap.From("""
-            {
-                "Prius.Data.RavenDB.Tests": "1.0.0"
-            }
-            """),
-            ModuleTimeout = TimeSpan.FromMilliseconds(50)
-        };
-
-        var busField = typeof(Engine.Bootstrap).GetField("_bus", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(busField);
-        var bus1 = (IElementContext)busField.GetValue(bootstrapActivateHang)!;
-        bus1.Put(new MapPath("Configuration/RavenDB/Database".AsSpan()), new MapValue("TestDb"));
-        
-        var exception = await Record.ExceptionAsync(async () => await bootstrapActivateHang.Activate());
-        
-        Assert.NotNull(exception);
-        Assert.IsType<TimeoutException>(exception);
-        Assert.True(ConfigurableTestModule.ConfigureCalled);
-        Assert.True(ConfigurableTestModule.ActivateCalled);
-
-        // Test 2: Hang on Stasis
-        ConfigurableTestModule.ConfigureCalled = false;
-        ConfigurableTestModule.ActivateCalled = false;
-        ConfigurableTestModule.StasisCalled = false;
-        ConfigurableTestModule.ShouldHangActivate = false;
-        ConfigurableTestModule.ShouldHangStasis = true;
-
-        var bootstrapStasisHang = new Engine.Bootstrap(repo, runtime, metadataRegistry)
-        {
-            StartupTargets = JsonReaderMap.From("""
-            {
-                "Prius.Data.RavenDB.Tests": "1.0.0"
-            }
-            """),
-            ModuleTimeout = TimeSpan.FromMilliseconds(50)
-        };
-
-        var bus2 = (IElementContext)busField.GetValue(bootstrapStasisHang)!;
-        bus2.Put(new MapPath("Configuration/RavenDB/Database".AsSpan()), new MapValue("TestDb"));
-
-        await bootstrapStasisHang.Activate();
-        
-        Assert.True(ConfigurableTestModule.ConfigureCalled);
-        Assert.True(ConfigurableTestModule.ActivateCalled);
-        Assert.False(ConfigurableTestModule.StasisCalled);
-
-        // This call should NOT throw/hang because DoStasis handles the timeout internally and logs it
-        var stasisException = await Record.ExceptionAsync(async () => await bootstrapStasisHang.Stasis());
-        Assert.Null(stasisException);
-        Assert.True(ConfigurableTestModule.StasisCalled);
-    }
-
-    [Fact]
-    public async Task Bootstrap_ShouldReadTimeoutFromConfiguration()
-    {
-        var repo = new LocalMockPackageRepository();
-        
-        var manifest = JsonReaderMap.From("""
-        {
-            "Info": {
-                "id": "Prius.Data.RavenDB.Tests",
-                "version": "1.0.0"
-            },
-            "Dependencies": {},
-            "Assets": {
-                "lib": {
-                    "net10.0": {
-                        "Prius.Data.RavenDB.Tests.dll": {
-                            "hash": "some-hash"
-                        }
-                    }
-                }
-            }
-        }
-        """);
-        repo.AddPackage(manifest);
-
-        var runtime = new LocalMockBootstrapRuntimeForTestModule();
-        var metadataRegistry = new LocalMockMetadataRegistry();
-
-        ConfigurableTestModule.ConfigureCalled = false;
-        ConfigurableTestModule.ActivateCalled = false;
-        ConfigurableTestModule.ShouldHangActivate = true;
-
-        var bootstrap = new Engine.Bootstrap(repo, runtime, metadataRegistry)
-        {
-            StartupTargets = JsonReaderMap.From("""
-            {
-                "Prius.Data.RavenDB.Tests": "1.0.0"
-            }
-            """)
-        };
-
-        var busField = typeof(Engine.Bootstrap).GetField("_bus", BindingFlags.NonPublic | BindingFlags.Instance);
-        Assert.NotNull(busField);
-        var bus = (IElementContext)busField.GetValue(bootstrap)!;
-        bus.Put(new MapPath("Configuration/RavenDB/Database".AsSpan()), new MapValue("TestDb"));
-        
-        // Put the timeout config as a string representing seconds
-        bus.Put(new MapPath("Configuration/Bootstrap/ModuleTimeout".AsSpan()), new MapValue("0.05"));
-
-        var exception = await Record.ExceptionAsync(async () => await bootstrap.Activate());
-        
-        Assert.NotNull(exception);
-        Assert.IsType<TimeoutException>(exception);
-        Assert.True(ConfigurableTestModule.ActivateCalled);
-    }
 
     [Fact]
     public async Task Bootstrap_ShouldStopSubscriptionWorkersOnStasis()
@@ -409,6 +265,151 @@ public class BootstrapIntegrationTests : AbstractDataIntentsProcessorTests
     }
 
     [Fact]
+    public async Task Bootstrap_ShouldGracefullyHandleHungModule()
+    {
+        var repo = new LocalMockPackageRepository();
+        
+        var manifest = JsonReaderMap.From("""
+        {
+            "Info": {
+                "id": "Prius.Data.RavenDB.Tests",
+                "version": "1.0.0"
+            },
+            "Dependencies": {},
+            "Assets": {
+                "lib": {
+                    "net10.0": {
+                        "Prius.Data.RavenDB.Tests.dll": {
+                            "hash": "some-hash"
+                        }
+                    }
+                }
+            }
+        }
+        """);
+        repo.AddPackage(manifest);
+
+        var runtime = new LocalMockBootstrapRuntimeForTestModule();
+        var metadataRegistry = new LocalMockMetadataRegistry();
+
+        // Test 1: Hang on Activate
+        var bootstrapActivateHang = new Engine.Bootstrap(repo, runtime, metadataRegistry)
+        {
+            StartupTargets = JsonReaderMap.From("""
+            {
+                "Prius.Data.RavenDB.Tests": "1.0.0"
+            }
+            """),
+            ModuleTimeout = TimeSpan.FromMilliseconds(50)
+        };
+
+        var busField = typeof(Engine.Bootstrap).GetField("_bus", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(busField);
+        var bus1 = (IElementContext)busField.GetValue(bootstrapActivateHang)!;
+        bus1.Put(new MapPath("Configuration/RavenDB/Database".AsSpan()), new MapValue("TestDb"));
+        bus1.Put(new MapPath("Configuration/TestModule/HangActivate".AsSpan()), new MapValue("true"));
+        
+        var exception = await Record.ExceptionAsync(async () => await bootstrapActivateHang.Activate());
+        
+        Assert.NotNull(exception);
+        Assert.IsType<TimeoutException>(exception);
+
+        var modulesField = typeof(Engine.Bootstrap).GetField("_modules", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(modulesField);
+        var modules1 = (List<IPriusModule>)modulesField.GetValue(bootstrapActivateHang)!;
+        var testModule1 = (ConfigurableTestModule)Assert.Single(modules1);
+        Assert.True(testModule1.ConfigureCalled);
+        Assert.True(testModule1.ActivateCalled);
+
+        // Test 2: Hang on Stasis
+        var bootstrapStasisHang = new Engine.Bootstrap(repo, runtime, metadataRegistry)
+        {
+            StartupTargets = JsonReaderMap.From("""
+            {
+                "Prius.Data.RavenDB.Tests": "1.0.0"
+            }
+            """),
+            ModuleTimeout = TimeSpan.FromMilliseconds(50)
+        };
+
+        var bus2 = (IElementContext)busField.GetValue(bootstrapStasisHang)!;
+        bus2.Put(new MapPath("Configuration/RavenDB/Database".AsSpan()), new MapValue("TestDb"));
+        bus2.Put(new MapPath("Configuration/TestModule/HangStasis".AsSpan()), new MapValue("true"));
+
+        await bootstrapStasisHang.Activate();
+
+        var modules2 = (List<IPriusModule>)modulesField.GetValue(bootstrapStasisHang)!;
+        var testModule2 = (ConfigurableTestModule)Assert.Single(modules2);
+        
+        Assert.True(testModule2.ConfigureCalled);
+        Assert.True(testModule2.ActivateCalled);
+        Assert.False(testModule2.StasisCalled);
+
+        // This call should NOT throw/hang because DoStasis handles the timeout internally and logs it
+        var stasisException = await Record.ExceptionAsync(async () => await bootstrapStasisHang.Stasis());
+        Assert.Null(stasisException);
+        Assert.True(testModule2.StasisCalled);
+    }
+
+    [Fact]
+    public async Task Bootstrap_ShouldReadTimeoutFromConfiguration()
+    {
+        var repo = new LocalMockPackageRepository();
+        
+        var manifest = JsonReaderMap.From("""
+        {
+            "Info": {
+                "id": "Prius.Data.RavenDB.Tests",
+                "version": "1.0.0"
+            },
+            "Dependencies": {},
+            "Assets": {
+                "lib": {
+                    "net10.0": {
+                        "Prius.Data.RavenDB.Tests.dll": {
+                            "hash": "some-hash"
+                        }
+                    }
+                }
+            }
+        }
+        """);
+        repo.AddPackage(manifest);
+
+        var runtime = new LocalMockBootstrapRuntimeForTestModule();
+        var metadataRegistry = new LocalMockMetadataRegistry();
+
+        var bootstrap = new Engine.Bootstrap(repo, runtime, metadataRegistry)
+        {
+            StartupTargets = JsonReaderMap.From("""
+            {
+                "Prius.Data.RavenDB.Tests": "1.0.0"
+            }
+            """)
+        };
+
+        var busField = typeof(Engine.Bootstrap).GetField("_bus", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(busField);
+        var bus = (IElementContext)busField.GetValue(bootstrap)!;
+        bus.Put(new MapPath("Configuration/RavenDB/Database".AsSpan()), new MapValue("TestDb"));
+        
+        // Put the timeout config as a string representing seconds
+        bus.Put(new MapPath("Configuration/Bootstrap/ModuleTimeout".AsSpan()), new MapValue("0.05"));
+        bus.Put(new MapPath("Configuration/TestModule/HangActivate".AsSpan()), new MapValue("true"));
+
+        var exception = await Record.ExceptionAsync(async () => await bootstrap.Activate());
+        
+        Assert.NotNull(exception);
+        Assert.IsType<TimeoutException>(exception);
+
+        var modulesField = typeof(Engine.Bootstrap).GetField("_modules", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(modulesField);
+        var modules = (List<IPriusModule>)modulesField.GetValue(bootstrap)!;
+        var testModule = (ConfigurableTestModule)Assert.Single(modules);
+        Assert.True(testModule.ActivateCalled);
+    }
+
+    [Fact]
     public async Task Bootstrap_ShouldSupportReactivation()
     {
         var repo = new LocalMockPackageRepository();
@@ -436,12 +437,6 @@ public class BootstrapIntegrationTests : AbstractDataIntentsProcessorTests
         var runtime = new LocalMockBootstrapRuntimeForTestModule();
         var metadataRegistry = new LocalMockMetadataRegistry();
 
-        ConfigurableTestModule.ConfigureCalled = false;
-        ConfigurableTestModule.ActivateCalled = false;
-        ConfigurableTestModule.StasisCalled = false;
-        ConfigurableTestModule.ShouldHangActivate = false;
-        ConfigurableTestModule.ShouldHangStasis = false;
-
         var bootstrap = new Engine.Bootstrap(repo, runtime, metadataRegistry)
         {
             StartupTargets = JsonReaderMap.From("""
@@ -458,22 +453,26 @@ public class BootstrapIntegrationTests : AbstractDataIntentsProcessorTests
 
         // 1. First Activation
         await bootstrap.Activate();
-        Assert.True(ConfigurableTestModule.ActivateCalled);
-        
-        // Reset flags
-        ConfigurableTestModule.ActivateCalled = false;
-        ConfigurableTestModule.StasisCalled = false;
 
+        var modulesField = typeof(Engine.Bootstrap).GetField("_modules", BindingFlags.NonPublic | BindingFlags.Instance);
+        Assert.NotNull(modulesField);
+        var modules1 = (List<IPriusModule>)modulesField.GetValue(bootstrap)!;
+        var firstModuleInstance = (ConfigurableTestModule)Assert.Single(modules1);
+        Assert.True(firstModuleInstance.ActivateCalled);
+        
         // 2. Second Activation (should automatically trigger Stasis on the first instance)
         await bootstrap.Activate();
         
-        Assert.True(ConfigurableTestModule.StasisCalled);
-        Assert.True(ConfigurableTestModule.ActivateCalled);
+        Assert.True(firstModuleInstance.StasisCalled);
+
+        var modules2 = (List<IPriusModule>)modulesField.GetValue(bootstrap)!;
+        var secondModuleInstance = (ConfigurableTestModule)Assert.Single(modules2);
+        Assert.True(secondModuleInstance.ActivateCalled);
+        Assert.False(secondModuleInstance.StasisCalled);
 
         // 3. Final Stasis
-        ConfigurableTestModule.StasisCalled = false;
         await bootstrap.Stasis();
-        Assert.True(ConfigurableTestModule.StasisCalled);
+        Assert.True(secondModuleInstance.StasisCalled);
     }
 
     [Fact]
@@ -518,13 +517,6 @@ public class BootstrapIntegrationTests : AbstractDataIntentsProcessorTests
         var bus = (IElementContext)busField.GetValue(bootstrap)!;
         bus.Put(new MapPath("Configuration/RavenDB/Database".AsSpan()), new MapValue("TestDb"));
 
-        DisposableTestService.Disposed = false;
-        ConfigurableTestModule.ConfigureCalled = false;
-        ConfigurableTestModule.ActivateCalled = false;
-        ConfigurableTestModule.StasisCalled = false;
-        ConfigurableTestModule.ShouldHangActivate = false;
-        ConfigurableTestModule.ShouldHangStasis = false;
-
         await bootstrap.Activate();
         
         var serviceProviderField = typeof(Engine.Bootstrap).GetField("_serviceProvider", BindingFlags.NonPublic | BindingFlags.Instance);
@@ -532,22 +524,22 @@ public class BootstrapIntegrationTests : AbstractDataIntentsProcessorTests
         var serviceProvider = (IServiceProvider)serviceProviderField.GetValue(bootstrap)!;
         var service = serviceProvider.GetRequiredService<DisposableTestService>();
         Assert.NotNull(service);
-        Assert.False(DisposableTestService.Disposed);
+        Assert.False(service.Disposed);
 
         await bootstrap.Stasis();
         
-        Assert.True(DisposableTestService.Disposed);
+        Assert.True(service.Disposed);
     }
 }
 
 public sealed class ConfigurableTestModule : IPriusModule
 {
-    public static bool ConfigureCalled;
-    public static bool ActivateCalled;
-    public static bool StasisCalled;
-    
-    public static bool ShouldHangActivate;
-    public static bool ShouldHangStasis;
+    private bool _shouldHangActivate;
+    private bool _shouldHangStasis;
+
+    public bool ConfigureCalled { get; private set; }
+    public bool ActivateCalled { get; private set; }
+    public bool StasisCalled { get; private set; }
 
     public void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
@@ -559,7 +551,13 @@ public sealed class ConfigurableTestModule : IPriusModule
     {
         ActivateCalled = true;
         
-        if (ShouldHangActivate)
+        if (bool.TryParse(configuration["TestModule:HangActivate"], out var hangActivate))
+            _shouldHangActivate = hangActivate;
+            
+        if (bool.TryParse(configuration["TestModule:HangStasis"], out var hangStasis))
+            _shouldHangStasis = hangStasis;
+
+        if (_shouldHangActivate)
             await Task.Delay(-1, ct);
     }
 
@@ -567,14 +565,17 @@ public sealed class ConfigurableTestModule : IPriusModule
     {
         StasisCalled = true;
         
-        if (ShouldHangStasis)
+        if (_shouldHangStasis)
             await Task.Delay(-1, ct);
     }
 }
 
 internal sealed class DisposableTestService : IDisposable
 {
-    public static bool Disposed;
+    public bool Disposed { get; private set; }
 
-    public void Dispose() => Disposed = true;
+    public void Dispose()
+    {
+        Disposed = true;
+    }
 }

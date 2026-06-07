@@ -344,9 +344,19 @@ internal sealed class VirtualBus(RoutingTrie routingTrie) : IBusContext, IDispos
         while (!path.IsEmpty)
         {
             var next = current[path.Head];
+            var isLast = path.Tail.IsEmpty;
+            
+            parent = current;
+            
+            if (isLast)
+            {
+                current = next.AsMap();
+                break;
+            }
+
             if (!next.IsMap)
                 return null;
-            parent = current;
+
             current = next.AsMap();
             path = path.Tail;
         }
