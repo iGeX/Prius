@@ -1,7 +1,4 @@
 using System.Threading.Channels;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Collections.Generic;
 using Prius.Engine.Abstractions;
 
 namespace Prius.Data.RavenDB.Tests;
@@ -9,6 +6,16 @@ namespace Prius.Data.RavenDB.Tests;
 public class MockDataIntentsProvider : IDataIntentsProvider
 {
     private readonly Channel<DataTransaction> _transactions = Channel.CreateUnbounded<DataTransaction>();
+
+    private readonly List<IIntent> _allIntents = new();
+    public IReadOnlyList<IIntent> AllIntents
+    {
+        get
+        {
+            lock (_allIntents) 
+                return _allIntents.ToArray();
+        }
+    }
 
     private int _pendingCount;
     public int PendingCount => _pendingCount;
@@ -18,9 +25,22 @@ public class MockDataIntentsProvider : IDataIntentsProvider
         foreach (var i in items)
         {
             var txContext = i.Context as ISystemElementContext ?? new MockElementContext();
-            _transactions.Writer.TryWrite(new DataTransaction(txContext, new IIntent[] { i }));
+            _transactions.Writer.TryWrite(new DataTransaction(txContext, [i]));
+            lock (_allIntents) 
+                _allIntents.Add(i);
             Interlocked.Increment(ref _pendingCount);
         }
+    }
+
+    public void AddTransaction(ISystemElementContext context, IEnumerable<IIntent> intents)
+    {
+        var intentsList = new List<IIntent>(intents);
+        _transactions.Writer.TryWrite(new DataTransaction(context, intentsList));
+        lock (_allIntents)
+        {
+            _allIntents.AddRange(intentsList);
+        }
+        Interlocked.Increment(ref _pendingCount);
     }
 
     public IEnumerable<LoadIntent> Loads { set => Accept(value); }

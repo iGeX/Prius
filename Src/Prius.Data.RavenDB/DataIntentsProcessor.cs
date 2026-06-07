@@ -6,11 +6,11 @@ namespace Prius.Data.RavenDB;
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Raven.Client.Documents.Session;
-using Raven.Client.Documents.Commands;
 using Raven.Client.Documents.Commands.Batches;
 using Raven.Client.Documents.Operations;
 using Sparrow.Json;
@@ -37,99 +37,184 @@ public sealed class DataIntentsProcessor(
 
     private async Task ProcessTransaction(DataTransaction tx, CancellationToken ct)
     {
+        using var session = holder.Store.OpenAsyncSession();
+        session.Advanced.UseOptimisticConcurrency = true;
+
+        var queuedWrites = new List<IIntent>();
+        var streamsToDispose = new List<Stream>();
+        var hasFailure = false;
+        Exception? failureException = null;
+
+        // Phase 1: Execute intents on the shared session
         foreach (var intent in tx.Intents)
         {
-            var retryCount = 0;
+            if (ct.IsCancellationRequested)
+                break;
 
+            if (logger.IsEnabled(LogLevel.Debug))
+                logger.LogDebug("Processing intent: {IntentInfo}", GetFullIntentInfo(intent));
+
+            try
+            {
+                if (IsWrite(intent))
+                {
+                    await QueueWrite(session, intent, streamsToDispose);
+                    queuedWrites.Add(intent);
+                }
+                else
+                    await HandleReadOrImmediate(session, intent);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Transaction step failed for intent: {IntentInfo}", GetFullIntentInfo(intent));
+                hasFailure = true;
+                failureException = ex;
+                
+                // If it's a read/immediate, we should report its failure
+                if (!IsWrite(intent)) 
+                    ReportFailure(intent, ex);
+
+                break; // Abort the transaction immediately
+            }
+        }
+
+        // Phase 2: Save changes if no failure occurred
+        if (!hasFailure && queuedWrites.Count > 0)
+        {
+            var retryCount = 0;
             while (true)
             {
                 try
                 {
-                    await HandleIntent(intent);
+                    await session.SaveChangesAsync(ct);
+                    
+                    // Success! Report success for all queued writes
+                    foreach (var intent in queuedWrites)
+                    {
+                        ReportSuccess(intent, true);
+                    }
                     break;
                 }
                 catch (OperationCanceledException)
                 {
-                    if (logger.IsEnabled(LogLevel.Debug))
-                        logger.LogDebug("Intent {IntentType} was cancelled", intent.GetType().Name);
                     break;
                 }
                 catch (Exception ex) when (IsFatal(ex))
                 {
-                    logger.LogError(ex, "Fatal error processing intent {IntentInfo}", GetFullIntentInfo(intent));
-                    ReportFailure(intent, ex);
+                    logger.LogError(ex, "Fatal error committing transaction");
+                    hasFailure = true;
+                    failureException = ex;
                     break;
                 }
                 catch (Exception ex)
                 {
+                    logger.LogWarning(ex, "Transient error committing transaction, retrying...");
                     retryCount++;
                     if (retryCount >= MaxRetries)
                     {
-                        if (logger.IsEnabled(LogLevel.Debug))
-                        {
-                            logger.LogDebug(ex, "Failed to process intent {IntentInfo} after {RetryCount} retries",
-                                GetFullIntentInfo(intent), MaxRetries);
-                        }
-
-                        ReportFailure(intent, ex);
+                        hasFailure = true;
+                        failureException = ex;
                         break;
                     }
-
-                    if (logger.IsEnabled(LogLevel.Trace))
-                        logger.LogTrace(ex, "Retry {RetryCount} for intent {IntentInfo}", retryCount, GetFullIntentInfo(intent));
 
                     var delay = TimeSpan.FromMilliseconds(Math.Pow(2, retryCount) * 100);
                     await Task.Delay(delay, ct);
                 }
             }
         }
+
+        // Dispose streams after SaveChangesAsync completes
+        foreach (var stream in streamsToDispose)
+        {
+            try
+            {
+                await stream.DisposeAsync();
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to dispose stream for StoreAttachmentIntent");
+            }
+        }
+
+        // If transaction failed, report failure for all write intents in the transaction
+        if (hasFailure && failureException != null)
+        {
+            foreach (var intent in tx.Intents)
+            {
+                if (IsWrite(intent))
+                {
+                    ReportFailure(intent, failureException);
+                }
+            }
+        }
     }
 
-    private async Task HandleIntent(IIntent intent)
+    private static bool IsWrite(IIntent intent) => intent switch
+    {
+        StoreIntent => true,
+        PatchIntent => true,
+        DeleteIntent => true,
+        IncrementIntent => true,
+        StoreAttachmentIntent => true,
+        DeleteAttachmentIntent => true,
+        NativeIntent => true,
+        _ => false
+    };
+
+    private async Task QueueWrite(IAsyncDocumentSession session, IIntent intent, List<Stream> streamsToDispose)
+    {
+        switch (intent)
+        {
+            case StoreIntent store:
+                await QueueStore(session, store);
+                break;
+            case PatchIntent patch:
+                await QueuePatch(session, patch);
+                break;
+            case DeleteIntent delete:
+                await QueueDelete(session, delete);
+                break;
+            case IncrementIntent increment:
+                await QueueIncrement(session, increment);
+                break;
+            case StoreAttachmentIntent storeAttachment:
+                await QueueStoreAttachment(session, storeAttachment, streamsToDispose);
+                break;
+            case DeleteAttachmentIntent deleteAttachment:
+                await QueueDeleteAttachment(session, deleteAttachment);
+                break;
+            case NativeIntent native:
+                await HandleNative(session, native);
+                break;
+            default:
+                throw new ArgumentException($"Unknown write intent type: {intent.GetType().Name}");
+        }
+    }
+
+    private async Task HandleReadOrImmediate(IAsyncDocumentSession session, IIntent intent)
     {
         switch (intent)
         {
             case LoadIntent load:
-                await HandleLoad(load);
+                await HandleLoad(session, load);
                 break;
             case QueryIntent query:
-                await HandleQuery(query);
-                break;
-            case StoreIntent store:
-                await HandleStore(store);
-                break;
-            case PatchIntent patch:
-                await HandlePatch(patch);
-                break;
-            case DeleteIntent delete:
-                await HandleDelete(delete);
-                break;
-            case IncrementIntent increment:
-                await HandleIncrement(increment);
+                await HandleQuery(session, query);
                 break;
             case GetCountersIntent getCounters:
-                await HandleGetCounters(getCounters);
+                await HandleGetCounters(session, getCounters);
                 break;
             case GetAttachmentsMetadataIntent getAttachmentsMetadata:
-                await HandleGetAttachmentsMetadata(getAttachmentsMetadata);
-                break;
-            case StoreAttachmentIntent storeAttachment:
-                await HandleStoreAttachment(storeAttachment);
+                await HandleGetAttachmentsMetadata(session, getAttachmentsMetadata);
                 break;
             case GetAttachmentIntent getAttachment:
-                await HandleGetAttachment(getAttachment);
-                break;
-            case DeleteAttachmentIntent deleteAttachment:
-                await HandleDeleteAttachment(deleteAttachment);
-                break;
-            case NativeIntent native:
-                await HandleNative(native);
+                await HandleGetAttachment(session, getAttachment);
                 break;
             case SubscriptionIntent subscription:
                 await HandleSubscription(subscription);
                 break;
             default:
-                throw new ArgumentException($"Unknown intent type: {intent.GetType().Name}");
+                throw new ArgumentException($"Unknown read/immediate intent type: {intent.GetType().Name}");
         }
     }
 
@@ -185,13 +270,11 @@ public sealed class DataIntentsProcessor(
 
     private static void ReportFailure(IIntent i, Exception ex) => ReportFailure(i, ex.Message, ex.GetType().Name);
     
-    private async Task HandleQuery(QueryIntent i)
+    private async Task HandleQuery(IAsyncDocumentSession session, QueryIntent i)
     {
         var (rql, parameters) = RqlBuilder.Build(i.QueryMap);
         if (string.IsNullOrEmpty(rql))
             return;
-
-        using var session = holder.Store.OpenAsyncSession(new SessionOptions { NoTracking = true });
         
         var query = session.Advanced.AsyncRawQuery<BlittableJsonReaderObject>(rql);
         foreach (var pair in parameters)
@@ -324,9 +407,8 @@ public sealed class DataIntentsProcessor(
         ]);
     }
 
-    private async Task HandleLoad(LoadIntent i)
+    private async Task HandleLoad(IAsyncDocumentSession session, LoadIntent i)
     {
-        using var session = holder.Store.OpenAsyncSession(new SessionOptions { NoTracking = true });
         var doc = await session.LoadAsync<BlittableJsonReaderObject>(i.DocumentId, i.Token);
 
         if (doc is null)
@@ -339,54 +421,46 @@ public sealed class DataIntentsProcessor(
         ReportSuccess(i, map.AsMapValue());
     }
 
-    private async Task HandleDelete(DeleteIntent i)
+    private Task QueueDelete(IAsyncDocumentSession session, DeleteIntent i)
     {
-        using var session = holder.Store.OpenAsyncSession();
-        session.Advanced.UseOptimisticConcurrency = true;
-
         if (!string.IsNullOrEmpty(i.ChangeVector))
             session.Advanced.Defer(new DeleteCommandData(i.DocumentId, i.ChangeVector));
         else
             session.Delete(i.DocumentId);
-
-        await session.SaveChangesAsync(i.Token);
-        ReportSuccess(i, true);
+        return Task.CompletedTask;
     }
 
-    private async Task HandleStore(StoreIntent i)
+    private async Task QueueStore(IAsyncDocumentSession session, StoreIntent i)
     {
         if (i.Document.DeepGet("@metadata/@collection").IsEmpty)
         {
-            ReportFailure(i, "No @metadata/@collection specified", "InvalidState");
-            return;
+            throw new InvalidOperationException("No @metadata/@collection specified");
         }
         
         if (logger.IsEnabled(LogLevel.Debug))
-            logger.LogDebug("Attempting to store document: {Id}", i.Document.Serialize());
+            logger.LogDebug("Queuing store document: {Id}", i.Document.Serialize());
             
-        using var session = holder.Store.OpenAsyncSession();
-        session.Advanced.UseOptimisticConcurrency = true;
-        
+        var id = i.Document.DeepGet("@metadata/@id").AsString();
         var changeVector = i.Document.DeepGet("@metadata/@change-vector").AsString();
-        var command = new PutCommandData(i.Document.DeepGet("@metadata/@id").AsString(), changeVector, i.Document.AsDynamicJson());
-        session.Advanced.Defer(command);
         
-        await session.SaveChangesAsync(i.Token);
-        
-        if (logger.IsEnabled(LogLevel.Debug))
-            logger.LogDebug("Successfully saved document: {Id}", i.Document.Serialize());
-        
-        ReportSuccess(i, true);
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(i.Document.Serialize()));
+        var blittable = await session.Advanced.Context.ReadForMemoryAsync(stream, id, i.Token);
+
+        if (!string.IsNullOrEmpty(changeVector))
+        {
+            await session.StoreAsync(blittable, changeVector, id);
+        }
+        else
+        {
+            await session.StoreAsync(blittable, id);
+        }
     }
 
-    private async Task HandlePatch(PatchIntent i)
+    private Task QueuePatch(IAsyncDocumentSession session, PatchIntent i)
     {
-        using var session = holder.Store.OpenAsyncSession();
-        
         var (script, values) = CreatePatchRequest(i.Path, i.Value);
         session.Advanced.Defer(new PatchCommandData(i.DocumentId, null, new PatchRequest { Script = script, Values = values }));
-        await session.SaveChangesAsync(i.Token);
-        ReportSuccess(i, true);
+        return Task.CompletedTask;
     }
 
     private static (string Script, Dictionary<string, object> Values) CreatePatchRequest(MapPath path, MapValue value)
@@ -430,17 +504,14 @@ public sealed class DataIntentsProcessor(
         return (scriptBuilder.ToString(), values);
     }
     
-    private async Task HandleIncrement(IncrementIntent i)
+    private Task QueueIncrement(IAsyncDocumentSession session, IncrementIntent i)
     {
-        using var session = holder.Store.OpenAsyncSession();
         session.CountersFor(i.DocumentId).Increment(i.CounterName, i.Delta);
-        await session.SaveChangesAsync(i.Token);
-        ReportSuccess(i, true);
+        return Task.CompletedTask;
     }
 
-    private async Task HandleGetCounters(GetCountersIntent i)
+    private async Task HandleGetCounters(IAsyncDocumentSession session, GetCountersIntent i)
     {
-        using var session = holder.Store.OpenAsyncSession(new SessionOptions { NoTracking = true });
         var counters = await session.CountersFor(i.DocumentId).GetAllAsync();
         
         var result = DictionaryMap.New;
@@ -450,16 +521,11 @@ public sealed class DataIntentsProcessor(
         ReportSuccess(i, result.AsMapValue());
     }
     
-    private async Task HandleGetAttachmentsMetadata(GetAttachmentsMetadataIntent i)
+    private async Task HandleGetAttachmentsMetadata(IAsyncDocumentSession session, GetAttachmentsMetadataIntent i)
     {
-        var command = new GetDocumentsCommand(holder.Store.Conventions, i.DocumentId, null, metadataOnly: true);
-
-        using var context = JsonOperationContext.ShortTermSingleUse();
-        await holder.Store.GetRequestExecutor().ExecuteAsync(command, context, null , i.Token);
+        var doc = await session.LoadAsync<BlittableJsonReaderObject>(i.DocumentId, i.Token);
         
-        if (command.Result.Results is null || 
-            command.Result.Results.Length == 0 ||
-            command.Result.Results[0] is not BlittableJsonReaderObject doc ||
+        if (doc is null || 
             !doc.TryGet("@metadata", out BlittableJsonReaderObject metadata) || 
             !metadata.TryGet("@attachments", out BlittableJsonReaderArray attachments))
         {
@@ -481,21 +547,15 @@ public sealed class DataIntentsProcessor(
         ReportSuccess(i, result.AsMapValue());
     }
 
-    private async Task HandleStoreAttachment(StoreAttachmentIntent i)
+    private Task QueueStoreAttachment(IAsyncDocumentSession session, StoreAttachmentIntent i, List<Stream> streamsToDispose)
     {
-        await using (i.Stream)
-        {
-            using var session = holder.Store.OpenAsyncSession();
-            session.Advanced.Attachments.Store(i.DocumentId, i.Name, i.Stream, i.ContentType);
-            await session.SaveChangesAsync(i.Token);
-            ReportSuccess(i, true);
-        }
+        session.Advanced.Attachments.Store(i.DocumentId, i.Name, i.Stream, i.ContentType);
+        streamsToDispose.Add(i.Stream);
+        return Task.CompletedTask;
     }
 
-    private async Task HandleGetAttachment(GetAttachmentIntent i)
+    private async Task HandleGetAttachment(IAsyncDocumentSession session, GetAttachmentIntent i)
     {
-        using var session = holder.Store.OpenAsyncSession();
-    
         using var attachmentResult = await session.Advanced.Attachments.GetAsync(i.DocumentId, i.Name, i.Token);
         if (attachmentResult == null)
         {
@@ -517,15 +577,13 @@ public sealed class DataIntentsProcessor(
         ReportSuccess(i, DictionaryMap.New.With(binaryPathStr, metadataMap.AsMapValue()).AsMapValue());
     }
 
-    private async Task HandleDeleteAttachment(DeleteAttachmentIntent i)
+    private Task QueueDeleteAttachment(IAsyncDocumentSession session, DeleteAttachmentIntent i)
     {
-        using var session = holder.Store.OpenAsyncSession();
         session.Advanced.Attachments.Delete(i.DocumentId, i.Name);
-        await session.SaveChangesAsync(i.Token);
-        ReportSuccess(i, true);
+        return Task.CompletedTask;
     }
 
-    private async Task HandleNative(NativeIntent i) => await i.Action(holder.Store, i);
+    private async Task HandleNative(IAsyncDocumentSession session, NativeIntent i) => await i.Action(session, i);
     
     private Task HandleSubscription(SubscriptionIntent i)
     {
