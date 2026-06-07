@@ -7,25 +7,16 @@ using Abstractions;
 using Core.Maps;
 using System.IO;
 using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 
 public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
 {
     private bool _inStasis;
     private readonly Lock _sync = new();
     
-    private readonly Channel<LoadIntent> _loads = Channel.CreateUnbounded<LoadIntent>();
-    private readonly Channel<QueryIntent> _queries = Channel.CreateUnbounded<QueryIntent>();
-    private readonly Channel<StoreIntent> _stores = Channel.CreateUnbounded<StoreIntent>();
-    private readonly Channel<PatchIntent> _patches = Channel.CreateUnbounded<PatchIntent>();
-    private readonly Channel<DeleteIntent> _deletes = Channel.CreateUnbounded<DeleteIntent>();
-    private readonly Channel<IncrementIntent> _increments = Channel.CreateUnbounded<IncrementIntent>();
-    private readonly Channel<GetCountersIntent> _getCounters = Channel.CreateUnbounded<GetCountersIntent>();
-    private readonly Channel<GetAttachmentsMetadataIntent> _getAttachmentsMetadata = Channel.CreateUnbounded<GetAttachmentsMetadataIntent>();
-    private readonly Channel<StoreAttachmentIntent> _storeAttachments = Channel.CreateUnbounded<StoreAttachmentIntent>();
-    private readonly Channel<GetAttachmentIntent> _getAttachments = Channel.CreateUnbounded<GetAttachmentIntent>();
-    private readonly Channel<DeleteAttachmentIntent> _deleteAttachments = Channel.CreateUnbounded<DeleteAttachmentIntent>();
-    private readonly Channel<NativeIntent> _natives = Channel.CreateUnbounded<NativeIntent>();
-    private readonly Channel<SubscriptionIntent> _subscriptions = Channel.CreateUnbounded<SubscriptionIntent>();
+    private readonly Channel<DataTransaction> _transactions = Channel.CreateUnbounded<DataTransaction>();
+    private readonly ConcurrentDictionary<ISystemElementContext, List<IIntent>> _pendingTransactions = new();
 
     public void EnterStasis()
     {
@@ -46,25 +37,76 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
         }
     }
 
-    public async ValueTask<LoadIntent> PopLoad(CancellationToken ct) => await _loads.Reader.ReadAsync(ct);
-    public async ValueTask<QueryIntent> PopQuery(CancellationToken ct) => await _queries.Reader.ReadAsync(ct);
-    public async ValueTask<StoreIntent> PopStore(CancellationToken ct) => await _stores.Reader.ReadAsync(ct);
-    public async ValueTask<PatchIntent> PopPatch(CancellationToken ct) => await _patches.Reader.ReadAsync(ct);
-    public async ValueTask<DeleteIntent> PopDelete(CancellationToken ct) => await _deletes.Reader.ReadAsync(ct);
-    public async ValueTask<IncrementIntent> PopIncrement(CancellationToken ct) => await _increments.Reader.ReadAsync(ct);
-    public async ValueTask<GetCountersIntent> PopGetCounters(CancellationToken ct) => await _getCounters.Reader.ReadAsync(ct);
-    public async ValueTask<GetAttachmentsMetadataIntent> PopGetAttachmentsMetadata(CancellationToken ct) => await _getAttachmentsMetadata.Reader.ReadAsync(ct);
-    public async ValueTask<StoreAttachmentIntent> PopStoreAttachment(CancellationToken ct) => await _storeAttachments.Reader.ReadAsync(ct);
-    public async ValueTask<GetAttachmentIntent> PopGetAttachment(CancellationToken ct) => await _getAttachments.Reader.ReadAsync(ct);
-    public async ValueTask<DeleteAttachmentIntent> PopDeleteAttachment(CancellationToken ct) => await _deleteAttachments.Reader.ReadAsync(ct);
-    public async ValueTask<NativeIntent> PopNative(CancellationToken ct) => await _natives.Reader.ReadAsync(ct);
-    public async ValueTask<SubscriptionIntent> PopSubscription(CancellationToken ct) => await _subscriptions.Reader.ReadAsync(ct);
+    public async ValueTask<DataTransaction> PopTx(CancellationToken ct) => 
+        await _transactions.Reader.ReadAsync(ct);
+
+    private ISystemElementContext GetTxRoot(ISystemElementContext context)
+    {
+        var current = context;
+        while (current.Parent is ISystemElementContext parent && parent.Parent is not null)
+        {
+            current = parent;
+        }
+        return current;
+    }
+
+    private void AddIntent(ISystemElementContext context, IIntent intent)
+    {
+        var txRoot = GetTxRoot(context);
+        
+        List<IIntent>? intentsList;
+        if (!_pendingTransactions.TryGetValue(txRoot, out intentsList))
+        {
+            var newList = new List<IIntent>();
+            lock (txRoot)
+            {
+                if (!_pendingTransactions.TryGetValue(txRoot, out intentsList))
+                {
+                    txRoot.OnCompleted += HandleTxCompleted;
+                    txRoot.OnFailed += HandleTxFailed;
+                    _pendingTransactions[txRoot] = newList;
+                    intentsList = newList;
+                }
+            }
+        }
+
+        lock (intentsList)
+        {
+            intentsList.Add(intent);
+        }
+    }
+
+    private void HandleTxCompleted(ISystemElementContext root)
+    {
+        root.OnCompleted -= HandleTxCompleted;
+        root.OnFailed -= HandleTxFailed;
+
+        if (_pendingTransactions.TryRemove(root, out var intents))
+        {
+            lock (intents)
+            {
+                if (intents.Count > 0)
+                {
+                    _transactions.Writer.TryWrite(new DataTransaction(root, intents));
+                }
+            }
+        }
+    }
+
+    private void HandleTxFailed(ISystemElementContext root, Exception ex)
+    {
+        root.OnCompleted -= HandleTxCompleted;
+        root.OnFailed -= HandleTxFailed;
+
+        _pendingTransactions.TryRemove(root, out _);
+    }
 
     public CancellationTokenSource? Load(IElementContext context, string documentId, MapPath successPath, MapPath failurePath)
     {
         var cts = TryRegister();
         if (cts == null) return null;
-        _loads.Writer.TryWrite(new LoadIntent(context, documentId, successPath, failurePath, cts.Token));
+        var intent = new LoadIntent(context, documentId, successPath.ToString(), failurePath.ToString(), cts.Token);
+        AddIntent((ISystemElementContext)context, intent);
         return cts;
     }
 
@@ -72,7 +114,8 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
     {
         var cts = TryRegister();
         if (cts == null) return null;
-        _queries.Writer.TryWrite(new QueryIntent(context, queryMap, successPath, failurePath, cts.Token));
+        var intent = new QueryIntent(context, queryMap, successPath.ToString(), failurePath.ToString(), cts.Token);
+        AddIntent((ISystemElementContext)context, intent);
         return cts;
     }
 
@@ -80,7 +123,8 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
     {
         var cts = TryRegister();
         if (cts == null) return null;
-        _stores.Writer.TryWrite(new StoreIntent(context, map, successPath, failurePath, cts.Token));
+        var intent = new StoreIntent(context, map, successPath.ToString(), failurePath.ToString(), cts.Token);
+        AddIntent((ISystemElementContext)context, intent);
         return cts;
     }
 
@@ -88,7 +132,8 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
     {
         var cts = TryRegister();
         if (cts == null) return null;
-        _patches.Writer.TryWrite(new PatchIntent(context, documentId, path, val, successPath, failurePath, cts.Token));
+        var intent = new PatchIntent(context, documentId, path, val, successPath.ToString(), failurePath.ToString(), cts.Token);
+        AddIntent((ISystemElementContext)context, intent);
         return cts;
     }
 
@@ -96,7 +141,8 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
     {
         var cts = TryRegister();
         if (cts == null) return null;
-        _deletes.Writer.TryWrite(new DeleteIntent(context, documentId, vector, successPath, failurePath, cts.Token));
+        var intent = new DeleteIntent(context, documentId, vector, successPath.ToString(), failurePath.ToString(), cts.Token);
+        AddIntent((ISystemElementContext)context, intent);
         return cts;
     }
 
@@ -104,7 +150,8 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
     {
         var cts = TryRegister();
         if (cts == null) return null;
-        _increments.Writer.TryWrite(new IncrementIntent(context, documentId, name, delta, successPath, failurePath, cts.Token));
+        var intent = new IncrementIntent(context, documentId, name, delta, successPath.ToString(), failurePath.ToString(), cts.Token);
+        AddIntent((ISystemElementContext)context, intent);
         return cts;
     }
 
@@ -112,7 +159,8 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
     {
         var cts = TryRegister();
         if (cts == null) return null;
-        _getCounters.Writer.TryWrite(new GetCountersIntent(context, documentId, successPath, failurePath, cts.Token));
+        var intent = new GetCountersIntent(context, documentId, successPath.ToString(), failurePath.ToString(), cts.Token);
+        AddIntent((ISystemElementContext)context, intent);
         return cts;
     }
 
@@ -120,7 +168,8 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
     {
         var cts = TryRegister();
         if (cts == null) return null;
-        _getAttachmentsMetadata.Writer.TryWrite(new GetAttachmentsMetadataIntent(context, documentId, successPath, failurePath, cts.Token));
+        var intent = new GetAttachmentsMetadataIntent(context, documentId, successPath.ToString(), failurePath.ToString(), cts.Token);
+        AddIntent((ISystemElementContext)context, intent);
         return cts;
     }
 
@@ -128,7 +177,8 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
     {
         var cts = TryRegister();
         if (cts == null) return null;
-        _storeAttachments.Writer.TryWrite(new StoreAttachmentIntent(context, documentId, name, stream, contentType, successPath, failurePath, cts.Token));
+        var intent = new StoreAttachmentIntent(context, documentId, name, stream, contentType, successPath.ToString(), failurePath.ToString(), cts.Token);
+        AddIntent((ISystemElementContext)context, intent);
         return cts;
     }
 
@@ -136,7 +186,8 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
     {
         var cts = TryRegister();
         if (cts == null) return null;
-        _getAttachments.Writer.TryWrite(new GetAttachmentIntent(context, documentId, name, successPath, failurePath, cts.Token));
+        var intent = new GetAttachmentIntent(context, documentId, name, successPath.ToString(), failurePath.ToString(), cts.Token);
+        AddIntent((ISystemElementContext)context, intent);
         return cts;
     }
 
@@ -144,7 +195,8 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
     {
         var cts = TryRegister();
         if (cts == null) return null;
-        _deleteAttachments.Writer.TryWrite(new DeleteAttachmentIntent(context, documentId, name, successPath, failurePath, cts.Token));
+        var intent = new DeleteAttachmentIntent(context, documentId, name, successPath.ToString(), failurePath.ToString(), cts.Token);
+        AddIntent((ISystemElementContext)context, intent);
         return cts;
     }
 
@@ -152,7 +204,8 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
     {
         var cts = TryRegister();
         if (cts == null) return null;
-        _natives.Writer.TryWrite(new NativeIntent(context, nativeAction, successPath, failurePath, cts.Token));
+        var intent = new NativeIntent(context, nativeAction, successPath.ToString(), failurePath.ToString(), cts.Token);
+        AddIntent((ISystemElementContext)context, intent);
         return cts;
     }
 
@@ -160,7 +213,8 @@ public class DataIntentsRegistry : IDataIntentsRegistry, IDataIntentsProvider
     {
         var cts = TryRegister();
         if (cts == null) return null;
-        _subscriptions.Writer.TryWrite(new SubscriptionIntent(context, topic, dataPath, successPath, failurePath, cts.Token));
+        var intent = new SubscriptionIntent(context, topic, dataPath, successPath.ToString(), failurePath.ToString(), cts.Token);
+        AddIntent((ISystemElementContext)context, intent);
         return cts;
     }
 }

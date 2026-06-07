@@ -26,79 +26,112 @@ public sealed class DataIntentsProcessor(
     private const int MaxRetries = 3;
 
     public async Task StartAsync(CancellationToken ct) =>
-        await Task.WhenAll(
-            ProcessLoop(provider.PopLoad, HandleLoad, ct),
-            ProcessLoop(provider.PopQuery, HandleQuery, ct),
-            ProcessLoop(provider.PopStore, HandleStore, ct),
-            ProcessLoop(provider.PopPatch, HandlePatch, ct),
-            ProcessLoop(provider.PopDelete, HandleDelete, ct),
-            ProcessLoop(provider.PopIncrement, HandleIncrement, ct),
-            ProcessLoop(provider.PopGetCounters, HandleGetCounters, ct),
-            ProcessLoop(provider.PopGetAttachmentsMetadata, HandleGetAttachmentsMetadata, ct),
-            ProcessLoop(provider.PopStoreAttachment, HandleStoreAttachment, ct),
-            ProcessLoop(provider.PopGetAttachment, HandleGetAttachment, ct),
-            ProcessLoop(provider.PopDeleteAttachment, HandleDeleteAttachment, ct),
-            ProcessLoop(provider.PopNative, HandleNative, ct),
-            ProcessLoop(provider.PopSubscription, HandleSubscription, ct)
-        );
-
-    private async Task ProcessLoop<T>(Func<CancellationToken, ValueTask<T>> popFunc, Func<T, Task> handler, CancellationToken ct) =>
         await Task.Factory.StartNew(async () => 
         {
             while (!ct.IsCancellationRequested)
             {
-                var intent = await popFunc(ct);
-                var retryCount = 0;
+                var tx = await provider.PopTx(ct);
+                await ProcessTransaction(tx, ct);
+            }
+        }, ct, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
 
-                while (true)
+    private async Task ProcessTransaction(DataTransaction tx, CancellationToken ct)
+    {
+        foreach (var intent in tx.Intents)
+        {
+            var retryCount = 0;
+
+            while (true)
+            {
+                try
                 {
-                    try
-                    {
-                        await handler(intent);
-                        break;
-                    }
-                    catch (OperationCanceledException)
+                    await HandleIntent(intent);
+                    break;
+                }
+                catch (OperationCanceledException)
+                {
+                    if (logger.IsEnabled(LogLevel.Debug))
+                        logger.LogDebug("Intent {IntentType} was cancelled", intent.GetType().Name);
+                    break;
+                }
+                catch (Exception ex) when (IsFatal(ex))
+                {
+                    logger.LogError(ex, "Fatal error processing intent {IntentInfo}", GetFullIntentInfo(intent));
+                    ReportFailure(intent, ex);
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    retryCount++;
+                    if (retryCount >= MaxRetries)
                     {
                         if (logger.IsEnabled(LogLevel.Debug))
-                            logger.LogDebug("Intent {IntentType} was cancelled", intent?.GetType().Name);
-                        break;
-                    }
-                    catch (Exception ex) when (IsFatal(ex))
-                    {
-                        if (intent is IIntent ii)
                         {
-                            logger.LogError(ex, "Fatal error processing intent {IntentInfo}", GetFullIntentInfo(intent));
-                            ReportFailure(ii, ex);
-                        }
-                        break;
-                    }
-                    catch (Exception ex)
-                    {
-                        retryCount++;
-                        if (retryCount >= MaxRetries)
-                        {
-                            if (intent is IIntent ii)
-                            {
-                                if (logger.IsEnabled(LogLevel.Debug))
-                                {
-                                    logger.LogDebug(ex, "Failed to process intent {IntentInfo} after {RetryCount} retries",
-                                        GetFullIntentInfo(intent), MaxRetries);
-                                }
-
-                                ReportFailure(ii, ex);
-                            }
-                            break;
+                            logger.LogDebug(ex, "Failed to process intent {IntentInfo} after {RetryCount} retries",
+                                GetFullIntentInfo(intent), MaxRetries);
                         }
 
-                        if (intent is not null && logger.IsEnabled(LogLevel.Trace))
-                            logger.LogTrace(ex, "Retry {RetryCount} for intent {IntentInfo}", retryCount, GetFullIntentInfo(intent));
-
-                        var delay = TimeSpan.FromMilliseconds(Math.Pow(2, retryCount) * 100);
-                        await Task.Delay(delay, ct);
+                        ReportFailure(intent, ex);
+                        break;
                     }
+
+                    if (logger.IsEnabled(LogLevel.Trace))
+                        logger.LogTrace(ex, "Retry {RetryCount} for intent {IntentInfo}", retryCount, GetFullIntentInfo(intent));
+
+                    var delay = TimeSpan.FromMilliseconds(Math.Pow(2, retryCount) * 100);
+                    await Task.Delay(delay, ct);
                 }
             }
-        }, ct, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        }
+    }
+
+    private async Task HandleIntent(IIntent intent)
+    {
+        switch (intent)
+        {
+            case LoadIntent load:
+                await HandleLoad(load);
+                break;
+            case QueryIntent query:
+                await HandleQuery(query);
+                break;
+            case StoreIntent store:
+                await HandleStore(store);
+                break;
+            case PatchIntent patch:
+                await HandlePatch(patch);
+                break;
+            case DeleteIntent delete:
+                await HandleDelete(delete);
+                break;
+            case IncrementIntent increment:
+                await HandleIncrement(increment);
+                break;
+            case GetCountersIntent getCounters:
+                await HandleGetCounters(getCounters);
+                break;
+            case GetAttachmentsMetadataIntent getAttachmentsMetadata:
+                await HandleGetAttachmentsMetadata(getAttachmentsMetadata);
+                break;
+            case StoreAttachmentIntent storeAttachment:
+                await HandleStoreAttachment(storeAttachment);
+                break;
+            case GetAttachmentIntent getAttachment:
+                await HandleGetAttachment(getAttachment);
+                break;
+            case DeleteAttachmentIntent deleteAttachment:
+                await HandleDeleteAttachment(deleteAttachment);
+                break;
+            case NativeIntent native:
+                await HandleNative(native);
+                break;
+            case SubscriptionIntent subscription:
+                await HandleSubscription(subscription);
+                break;
+            default:
+                throw new ArgumentException($"Unknown intent type: {intent.GetType().Name}");
+        }
+    }
 
     private static bool IsFatal(Exception ex) => ex switch
     {

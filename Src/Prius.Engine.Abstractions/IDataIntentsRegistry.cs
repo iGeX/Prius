@@ -34,5 +34,5 @@ public record GetAttachmentsMetadataIntent(IElementContext Context, string Docum
 public record StoreAttachmentIntent(IElementContext Context, string DocumentId, string Name, Stream Stream, string ContentType, string SuccessPath, string FailurePath, CancellationToken Token) : IIntent;
 public record GetAttachmentIntent(IElementContext Context, string DocumentId, string Name, string SuccessPath, string FailurePath, CancellationToken Token) : IIntent;
 public record DeleteAttachmentIntent(IElementContext Context, string DocumentId, string Name, string SuccessPath, string FailurePath, CancellationToken Token) : IIntent;
-public record NativeIntent(IElementContext Context, Func<object, NativeIntent, Task> Action, string SuccessPath, string FailurePath, CancellationToken Token);
+public record NativeIntent(IElementContext Context, Func<object, NativeIntent, Task> Action, string SuccessPath, string FailurePath, CancellationToken Token) : IIntent;
 public record SubscriptionIntent(IElementContext Context, string TopicName, string SubscriptionPath, string SuccessPath, string FailurePath, CancellationToken Token) : IIntent;

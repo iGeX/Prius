@@ -253,6 +253,47 @@ public sealed class VirtualBusTests
         Assert.Equal(123L, bus.Get("reentrant/start/sub").AsLong());
         Assert.Equal(2, reentrantElement.CallCount);
     }
+
+    [Fact]
+    public async Task DataIntentsRegistry_ShouldGroupIntentsByTxRoot_AndCommitOnCompleted()
+    {
+        var registry = new DataIntentsRegistry();
+        registry.ExitStasis();
+
+        var trie = new RoutingTrie();
+        var txElement = new TransactionalElement(registry);
+        trie.AddRoute("api/users", txElement);
+        var bus = new VirtualBus(trie);
+
+        bus.Put("api/users", "trigger");
+
+        using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(2));
+        var tx = await registry.PopTx(cts.Token);
+        
+        Assert.NotNull(tx);
+        Assert.Equal("api/users", tx.Context.AbsolutePath);
+        Assert.Equal(2, tx.Intents.Count);
+        
+        Assert.IsType<StoreIntent>(tx.Intents[0]);
+        Assert.IsType<StoreIntent>(tx.Intents[1]);
+    }
+
+    [Fact]
+    public async Task DataIntentsRegistry_ShouldDiscardIntents_OnFailed()
+    {
+        var registry = new DataIntentsRegistry();
+        registry.ExitStasis();
+
+        var trie = new RoutingTrie();
+        var txElement = new FailingTransactionalElement(registry);
+        trie.AddRoute("api/users", txElement);
+        var bus = new VirtualBus(trie);
+
+        Assert.ThrowsAny<Exception>(() => bus.Put("api/users", "trigger"));
+
+        using var checkCts = new CancellationTokenSource(100);
+        await Assert.ThrowsAsync<OperationCanceledException>(async () => await registry.PopTx(checkCts.Token));
+    }
 }
 
 public sealed class ReentrantElement : IElement
@@ -319,6 +360,29 @@ public sealed class AsyncEventElement : IElement
 public sealed class CascadeRouterElement(string deeperPath, IMap? patch) : IElement
 {
     public bool Put(IElementContext context, MapPath path, MapValue value) => context.Put(deeperPath, value, patch);
+
+    public MapValue Get(IElementContext context, MapPath path) => new();
+}
+
+public sealed class TransactionalElement(IDataIntentsRegistry registry) : IElement
+{
+    public bool Put(IElementContext context, MapPath path, MapValue value)
+    {
+        registry.Store(context, DictionaryMap.New.With("id", "1"), "out1", "err1");
+        registry.Store(context, DictionaryMap.New.With("id", "2"), "out2", "err2");
+        return true;
+    }
+
+    public MapValue Get(IElementContext context, MapPath path) => new();
+}
+
+public sealed class FailingTransactionalElement(IDataIntentsRegistry registry) : IElement
+{
+    public bool Put(IElementContext context, MapPath path, MapValue value)
+    {
+        registry.Store(context, DictionaryMap.New.With("id", "1"), "out1", "err1");
+        throw new Exception("Simulated element failure");
+    }
 
     public MapValue Get(IElementContext context, MapPath path) => new();
 }
