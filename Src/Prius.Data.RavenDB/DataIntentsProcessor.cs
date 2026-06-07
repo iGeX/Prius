@@ -5,8 +5,10 @@ using Raven.Client.Documents.Subscriptions;
 namespace Prius.Data.RavenDB;
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
@@ -24,16 +26,54 @@ public sealed class DataIntentsProcessor(
     ILogger<DataIntentsProcessor> logger)
 {
     private const int MaxRetries = 3;
+    private readonly ConcurrentDictionary<string, (SubscriptionWorker<BlittableJsonReaderObject> Worker, Task ExecutionTask, CancellationTokenSource Cts)> _activeSubscriptions = new();
 
-    public async Task StartAsync(CancellationToken ct) =>
-        await Task.Factory.StartNew(async () => 
+    public async Task StartAsync(CancellationToken ct)
+    {
+        try
         {
-            while (!ct.IsCancellationRequested)
+            await Task.Factory.StartNew(async () => 
             {
-                var tx = await provider.PopTx(ct);
-                await ProcessTransaction(tx, ct);
+                while (!ct.IsCancellationRequested)
+                {
+                    var tx = await provider.PopTx(ct);
+                    await ProcessTransaction(tx, ct);
+                }
+            }, ct, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
+        }
+        finally
+        {
+            await StopAllSubscriptionsAsync();
+        }
+    }
+
+    private async Task StopAllSubscriptionsAsync()
+    {
+        var active = _activeSubscriptions.Values.ToArray();
+        _activeSubscriptions.Clear();
+
+        foreach (var item in active)
+        {
+            try
+            {
+                await item.Cts.CancelAsync();
+                await item.Worker.DisposeAsync();
+
+                var timeoutTask = Task.Delay(2000);
+                var completedTask = await Task.WhenAny(item.ExecutionTask, timeoutTask);
+                if (completedTask == timeoutTask)
+                    logger.LogWarning("Timeout waiting for subscription worker to stop");
             }
-        }, ct, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Error stopping subscription worker");
+            }
+            finally
+            {
+                item.Cts.Dispose();
+            }
+        }
+    }
 
     private async Task ProcessTransaction(DataTransaction tx, CancellationToken ct)
     {
@@ -589,34 +629,69 @@ public sealed class DataIntentsProcessor(
     {
         try
         {
-            var options = new SubscriptionWorkerOptions(i.TopicName)
+            var topic = i.TopicName;
+            
+            if (_activeSubscriptions.TryGetValue(topic, out var existing))
+            {
+                if (!existing.ExecutionTask.IsCompleted)
+                {
+                    ReportSuccess(i, true);
+                    return Task.CompletedTask;
+                }
+                
+                _activeSubscriptions.TryRemove(topic, out _);
+                existing.Cts.Dispose();
+            }
+
+            var options = new SubscriptionWorkerOptions(topic)
             {
                 Strategy = SubscriptionOpeningStrategy.WaitForFree
             };
-            
-            _ = Task.Factory.StartNew(async () =>
-            {
-                try
-                {
-                    await using var worker = holder.Store.Subscriptions.GetSubscriptionWorker<BlittableJsonReaderObject>(options);
-                    await worker.Run(async batch =>
-                    {
-                        var sysCtx = (ISystemElementContext)i.Context;
-                        foreach (var item in batch.Items)
-                        {
-                            var map = await item.Result.AsJsonReaderMap();
-                            var relativePath = new MapPath(i.SubscriptionPath.AsSpan()) + new MapPath(item.Id.AsSpan());
-                            var absolutePath = new MapPath(sysCtx.AbsolutePath.AsSpan()) + relativePath;
-                            sysCtx.PutAbsolute(absolutePath, map.AsMapValue());
-                        }
-                    }, i.Token);
-                }
-                catch (Exception ex)
-                {
-                    logger.LogError(ex, "Subscription worker failed for topic {Topic}", i.TopicName);
-                }
-            }, i.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
 
+            var cts = new CancellationTokenSource();
+            var worker = holder.Store.Subscriptions.GetSubscriptionWorker<BlittableJsonReaderObject>(options);
+            
+            var executionTask = Task.Run(async () =>
+            {
+                var retryDelay = TimeSpan.FromSeconds(2);
+                while (!cts.Token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await worker.Run(async batch =>
+                        {
+                            var sysCtx = (ISystemElementContext)i.Context;
+                            foreach (var item in batch.Items)
+                            {
+                                var map = await item.Result.AsJsonReaderMap();
+                                var relativePath = new MapPath(i.SubscriptionPath.AsSpan()) + new MapPath(item.Id.AsSpan());
+                                var absolutePath = new MapPath(sysCtx.AbsolutePath.AsSpan()) + relativePath;
+                                sysCtx.PutAbsolute(absolutePath, map.AsMapValue());
+                            }
+                        }, cts.Token);
+                    }
+                    catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+                    {
+                        break;
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(ex, "Subscription worker error for topic {Topic}, retrying in {Delay}s...", topic, retryDelay.TotalSeconds);
+                        try
+                        {
+                            await Task.Delay(retryDelay, cts.Token);
+                        }
+                        catch (OperationCanceledException)
+                        {
+                            break;
+                        }
+                        
+                        retryDelay = TimeSpan.FromSeconds(Math.Min(30, retryDelay.TotalSeconds * 2));
+                    }
+                }
+            }, cts.Token);
+
+            _activeSubscriptions[topic] = (worker, executionTask, cts);
             ReportSuccess(i, true);
             return Task.CompletedTask;
         }
