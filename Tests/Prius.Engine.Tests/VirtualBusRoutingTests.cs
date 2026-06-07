@@ -86,4 +86,32 @@ public sealed class VirtualBusRoutingTests
         Assert.True(rootDeepSpy.WasExecuted);
         Assert.Equal("other/path", rootDeepSpy.LastRemainingPath);
     }
+
+    [Fact]
+    public void DeepWildcard_RecursiveGet_ShouldConsumeSegmentsAndPreventInfiniteRecursion()
+    {
+        var trie = new RoutingTrie();
+        var spy = new RecursiveSpyElement();
+        
+        trie.AddRoute("api/**", spy);
+        
+        var bus = new VirtualBus(trie);
+        var result = bus.Get("api/users/profile");
+        
+        Assert.Equal("done", result.AsString());
+        Assert.Equal(3, spy.ExecutionCount);
+    }
+
+    private sealed class RecursiveSpyElement : IElement
+    {
+        public int ExecutionCount { get; private set; }
+
+        public bool Put(IElementContext context, MapPath path, MapValue value) => true;
+
+        public MapValue Get(IElementContext context, MapPath path)
+        {
+            ExecutionCount++;
+            return !path.IsEmpty ? context.Get(path) : new MapValue("done");
+        }
+    }
 }
