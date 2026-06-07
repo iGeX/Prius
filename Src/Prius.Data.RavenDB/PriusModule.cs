@@ -7,8 +7,7 @@ namespace Prius.Data.RavenDB;
 
 public sealed class PriusModule : IPriusModule
 {
-    private Task? _processingTask;
-    private CancellationTokenSource? _cts;
+    private DataIntentsProcessor? _processor;
 
     public void ConfigureServices(IServiceCollection services, IConfiguration configuration)
     {
@@ -32,39 +31,16 @@ public sealed class PriusModule : IPriusModule
             services.AddSingleton<DataIntentsProcessor>();
     }
 
-    public ValueTask Activate(IServiceProvider serviceProvider, IConfiguration configuration, CancellationToken ct)
+    public async ValueTask Activate(IServiceProvider serviceProvider, IConfiguration configuration, CancellationToken ct)
     {
-        var processor = serviceProvider.GetService<DataIntentsProcessor>();
-        if (processor == null) 
-            return ValueTask.CompletedTask;
-        
-        _cts = new CancellationTokenSource();
-        _processingTask = processor.StartAsync(_cts.Token);
-        return ValueTask.CompletedTask;
+        _processor = serviceProvider.GetService<DataIntentsProcessor>();
+        if (_processor != null)
+            await _processor.StartAsync(ct);
     }
 
     public async ValueTask Stasis(CancellationToken ct)
     {
-        if (_cts != null)
-            await _cts.CancelAsync();
-
-        if (_processingTask != null)
-        {
-            try
-            {
-                // Await completion with Bootstrap's CancellationToken timeout
-                await _processingTask.WaitAsync(ct);
-            }
-            catch (OperationCanceledException)
-            {
-                Console.WriteLine("[SHUTDOWN] DataIntentsProcessor stasis waiting timed out or was cancelled.");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[SHUTDOWN] DataIntentsProcessor encountered an error during stasis: {ex}");
-            }
-        }
-
-        _cts?.Dispose();
+        if (_processor != null)
+            await _processor.StopAsync(ct);
     }
 }

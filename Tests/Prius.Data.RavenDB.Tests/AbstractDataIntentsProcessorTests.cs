@@ -53,16 +53,14 @@ public abstract class AbstractDataIntentsProcessorTests : RavenTestDriver
     
     protected static async Task ExecuteTest(IDocumentStore store, MockDataIntentsProvider provider, BinaryManager binaryManager, Func<Task> assertion)
     {
-        using var processorCt = new CancellationTokenSource();
         using var assertCt = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var holder = new TestDocumentStoreHolder(store);
         var processor = new DataIntentsProcessor(holder, provider, binaryManager, NullLogger<DataIntentsProcessor>.Instance);
         
-        var task = processor.StartAsync(processorCt.Token);
+        await processor.StartAsync(CancellationToken.None);
         await WaitForCompletion(provider, assertCt.Token);
         
-        await processorCt.CancelAsync();
-        try { await task; } catch (OperationCanceledException) { }
+        await processor.StopAsync(CancellationToken.None);
 
         await assertion();
     }

@@ -27,27 +27,67 @@ public sealed class DataIntentsProcessor(
 {
     private const int MaxRetries = 3;
     private readonly ConcurrentDictionary<string, (SubscriptionWorker<BlittableJsonReaderObject> Worker, Task ExecutionTask, CancellationTokenSource Cts)> _activeSubscriptions = new();
+    private CancellationTokenSource? _cts;
+    private Task? _processingTask;
 
     public async Task StartAsync(CancellationToken ct)
     {
-        try
-        {
-            await Task.Factory.StartNew(async () => 
-            {
-                while (!ct.IsCancellationRequested)
-                {
-                    var tx = await provider.PopTx(ct);
-                    await ProcessTransaction(tx, ct);
-                }
-            }, ct, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
-        }
-        finally
-        {
-            await StopAllSubscriptionsAsync();
-        }
+        ct.ThrowIfCancellationRequested();
+        
+        _cts = new CancellationTokenSource();
+        _processingTask = RunProcessingLoopAsync(_cts.Token);
+        
+        await Task.CompletedTask;
     }
 
-    private async Task StopAllSubscriptionsAsync()
+    private async Task RunProcessingLoopAsync(CancellationToken ct) =>
+        await Task.Factory.StartNew(async () => 
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                var tx = await provider.PopTx(ct);
+                await ProcessTransaction(tx, ct);
+            }
+        }, ct, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
+
+    public async Task StopAsync(CancellationToken ct)
+    {
+        if (_cts != null)
+            await _cts.CancelAsync();
+
+        if (_processingTask != null)
+        {
+            try
+            {
+                await _processingTask.WaitAsync(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("[SHUTDOWN] DataIntentsProcessor stasis waiting timed out or was cancelled.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SHUTDOWN] DataIntentsProcessor encountered an error during stasis: {ex}");
+            }
+        }
+
+        try
+        {
+            await StopAllSubscriptionsAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("[SHUTDOWN] Stopping subscriptions timed out or was cancelled.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SHUTDOWN] Encountered an error stopping subscriptions: {ex}");
+        }
+
+        _cts?.Dispose();
+    }
+
+    private async Task StopAllSubscriptionsAsync(CancellationToken ct)
     {
         var active = _activeSubscriptions.Values.ToArray();
         _activeSubscriptions.Clear();
@@ -59,14 +99,16 @@ public sealed class DataIntentsProcessor(
                 await item.Cts.CancelAsync();
                 await item.Worker.DisposeAsync();
 
-                var timeoutTask = Task.Delay(2000);
-                var completedTask = await Task.WhenAny(item.ExecutionTask, timeoutTask);
-                if (completedTask == timeoutTask)
-                    logger.LogWarning("Timeout waiting for subscription worker to stop");
+                await item.ExecutionTask.WaitAsync(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("[SHUTDOWN] Subscription worker stasis waiting timed out or was cancelled.");
+                break;
             }
             catch (Exception ex)
             {
-                logger.LogWarning(ex, "Error stopping subscription worker");
+                Console.WriteLine($"[SHUTDOWN] Encountered an error stopping subscription worker: {ex}");
             }
             finally
             {

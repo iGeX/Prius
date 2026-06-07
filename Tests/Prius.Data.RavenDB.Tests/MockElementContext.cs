@@ -12,6 +12,10 @@ public class MockElementContext : ISystemElementContext
     public event Action<ISystemElementContext>? OnCompleted;
     public event Action<ISystemElementContext, Exception>? OnFailed;
     
+    public void Complete() => OnCompleted?.Invoke(this);
+
+    public void Fail(Exception ex) => OnFailed?.Invoke(this, ex);
+
     public Dictionary<string, MapValue> PutCalls { get; } = new();
 
     public bool IsEmpty => false;
