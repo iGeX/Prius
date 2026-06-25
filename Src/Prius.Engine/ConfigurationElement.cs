@@ -7,17 +7,10 @@ public sealed class ConfigurationElement(BusConfigurationProvider provider) : IE
 {
     public bool Put(IElementContext context, MapPath path, MapValue value)
     {
-        // Прямой доступ к данным шины через Put контекста (который упадет в Backing Map)
-        // Но так как мы возвращаем true, шина сама в Backing Map не запишет.
-        // Чтобы записать в Backing Map, мы должны вызвать context.Put("/", value) 
-        // Но так как ConfigurationElement это просто обертка над VirtualBus для ConfigurationProvider,
-        // возможно он должен просто транслировать вниз и после этого уведомлять провайдера.
-        // Так как мы хотим записать в память, мы вызываем context.Put("/", value)
-        
-        context.Put("/", value);
+        context.Put(path, value);
         provider.NotifyConfigurationChanged();
         return true;
     }
 
-    public MapValue Get(IElementContext context, MapPath path) => context.Get("/");
+    public MapValue Get(IElementContext context, MapPath path) => context.Get(path);
 }

@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using Core.Maps;
 using Abstractions;
 
-internal interface IBusContext : IElementContext
+internal interface IBusContext : ISystemElementContext
 {
     int Depth { get; }
     IElement? Owner { get; }
@@ -27,6 +27,7 @@ public sealed class ElementContext : IBusContext
     private readonly RoutingNode _mountNode;
     private readonly MatchType _matchType;
     private readonly int _depth;
+    internal int Depth => _depth;
     
     int IBusContext.Depth => _depth;
     IMap IBusContext.Node => _node;
@@ -35,10 +36,16 @@ public sealed class ElementContext : IBusContext
     RoutingNode IBusContext.MountNode => _mountNode;
     IMap? IBusContext.StaticEnv => _staticEnv;
     MatchType IBusContext.MatchType => _matchType;
-    private IElementContext? Parent { get; }
+    public IElementContext? Parent { get; }
     
     public string AbsolutePath { get; }
     public string CallerSegment { get; }
+    
+    public event Action<ISystemElementContext>? OnCompleted;
+    public event Action<ISystemElementContext, Exception>? OnFailed;
+    
+    internal void TriggerCompleted() => OnCompleted?.Invoke(this);
+    internal void TriggerFailed(Exception ex) => OnFailed?.Invoke(this, ex);
     
     public bool IsEmpty => (_envPatch is null || _envPatch.IsEmpty) && (_staticEnv is null || _staticEnv.IsEmpty) && (Parent is not ElementContext ctx || ctx.IsEmpty);
     public bool CanWrite => false;

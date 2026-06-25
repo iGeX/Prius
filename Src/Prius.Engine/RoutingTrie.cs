@@ -55,7 +55,7 @@ internal sealed class RoutingTrie
         var current = startNode;
         var fallbackElement = initialFallback;
         var fallbackStaticEnv = initialFallbackEnv;
-        var fallbackDepth = 0;
+        var fallbackDepth = initialFallback != null ? 1 : 0;
         var fallbackNode = startNode;
 
         var originalPath = path;

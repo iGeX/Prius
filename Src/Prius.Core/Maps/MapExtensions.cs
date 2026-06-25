@@ -338,9 +338,6 @@ public static class MapExtensions
         onDecimal: d => d == valR.AsValue<decimal>(),
         onDateTimeOffset: dt => dt == valR.AsValue<DateTimeOffset>()
     );
-
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    public static IAsyncMap AsAsync(this IMap map) => new AsyncMapAdapter(map);
     
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static IMap AsReadOnly(this IMap map) => new ReadOnlyMap(map);

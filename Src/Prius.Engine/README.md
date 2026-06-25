@@ -1,50 +1,31 @@
-# Prius.Engine
+# Prius.Engine: Internal Runtime Architecture and Component Mechanics
 
-Реализация ядра движка Prius, ответственного за маршрутизацию операций, управление жизненным циклом и конфигурирование системы.
+## 1. Core Bootstrapping and Package Management
+* **Bootstrap Container and DI Lifecycle**: The `Bootstrap` class manages the lifecycle of the lightweight node, executing transitions between `Active`, `Stasis`, and `Terminated` states. It handles dynamic `AssemblyLoadContext` allocation, manages the dependency injection (DI) container, executes recursive package loading, and discovers modules (`IPriusModule`) and execution elements (`IElement`).
+* **Configuration Bridge**: The `BusConfigurationProvider` and `ConfigurationElement` map the `VirtualBus` path `/Configuration` directly to the standard `.NET IConfiguration` infrastructure. This enables reactive, live updates across the system using `IOptionsMonitor`.
+* **PackageResolver**: This subsystem resolves complex package dependency graphs while verifying Target Framework Moniker (TFM) compatibility. It computes a strictly deterministic loading order for all node assets.
+* **Package Importers and Exporters**: `PackageImporter` processes incoming `.nupkg` binary streams, computes file verification hashes, and establishes hierarchical asset layouts. Conversely, `PackageExporter` packages local repository manifests and file structures back into valid `.nupkg` distribution files.
+* **NuspecMapper**: A parsing utility that converts standard XML-based `.nuspec` manifests directly into the unified ecosystem `IMap` format.
 
-## Ядро и Модульность
-- **`Bootstrap`**: Центральный класс управления жизненным циклом (активация, стазис). Реализует рекурсивную загрузку пакетов, обнаружение модулей (`IPriusModule`) и элементов (`IElement`), а также управление DI-контейнером.
-- **`BusConfigurationProvider` / `ConfigurationElement`**: Реализуют мост между `VirtualBus` (путь `/Configuration`) и стандартным `.NET IConfiguration`. Обеспечивают реактивное обновление конфигурации через `IOptionsMonitor`.
+## 2. High-Performance Execution & Routing Architecture (VirtualBus)
+* **The Dispatch Pipeline**: When a `Put` or `Get` operation enters the bus, execution moves through a synchronous pipeline: Signal Input → Absolute Node Lock → `RoutingTrie.ResolveScoped` → `IElement` Execution → Memory Fallthrough.
+* **RoutingTrie Prefix Resolution**: Route resolution follows a strict priority matrix: `Exact Match` > `Wildcard (*)` > `Deep Wildcard (**)` on the terminal segment.
+* **Terminal Match Interception**: If an intermediate path segment contains a registered `TerminalElement`, the trie traversal immediately stops, skipping deeper wildcard evaluation. Control shifts to this element, allowing parent nodes to act as sandboxes, isolation barriers, or pre-execution filters.
+* **Relative Coordinate Translation**: The routing system isolates elements into localized coordinate systems. `RoutingTrie.ResolveScoped` evaluates the absolute path, strips the matched prefix, and passes only the `RemainingPath` along with an isolated `ElementContext` to the target element.
+* **Immutable Context Call Stack**: Every level of element composition generates an immutable, nested `ElementContext`. Each context maintains a `Parent` reference back to the calling context, tracks the current `CallerSegment`, and provides a `Node` reference for direct operations on that structural memory node.
+* **Hierarchical Environment Resolution (Env)**: The `ElementContext` resolves configuration lookup keys using a strict three-tier hierarchy: `Dynamic Patch` (arguments supplied at the current call site) > `Static Env` (environment properties bound to the route during mounting) > recursive evaluation up the `Parent` chain. Direct mutations to `context["key"]` are ignored; all persistent state must be written explicitly via `context.Put()`.
 
-## Работа с пакетами (NuGet/Nuspec)
-- **`NuspecMapper`**: Утилита для конвертации XML-манифестов (`.nuspec`) в формат `IMap`.
-- **`PackageImporter`**: Импорт NuGet-пакетов из потока (`.nupkg`), вычисление хэшей файлов и создание иерархической структуры активов.
-- **`PackageExporter`**: Экспорт манифеста и активов из репозитория обратно в формат `.nupkg`.
-- **`PackageResolver`**: Механизм разрешения графа зависимостей пакетов с учетом TFM-совместимости и построения детерминированного порядка загрузки.
+## 3. State Management and Memory Fallthrough Mechanics
+* **Implicit Storage (_memoryRoot)**: Elements remain strictly stateless singletons that do not preserve data within class fields. If an element invokes `context.Put("sub/path", value)` and no nested element is registered to handle that sub-path, the data falls through and writes directly into the `BusMemoryNode` tree inside `_memoryRoot`. This allows any element to utilize its relative sub-paths as an implicit data store.
+* **Operational Control Isolation**: To protect system internal flags from application data payloads, administrative state flags use a `$` character prefix (e.g., `context.Put("$Active", value)`). This naming convention prevents generic data writes to a path from overwriting core structural properties.
 
-## Маршрутизация и исполнение (VirtualBus)
+## 4. Threading, Concurrency, and Advanced Synchronization
+* **ReaderWriterLockSlim Tree Architecture**: Thread safety across the synchronous execution tree is enforced using a specialized hierarchical tree structure composed of `ReaderWriterLockSlim` instances, replacing legacy object monitors to support optimal read/write isolation.
+* **Race Condition Protection via Double-Check Locking**: The dynamic initialization and allocation of new lock nodes within the tree are strictly protected against race conditions using a thread-safe double-check locking (DCL) pattern, ensuring safe provisioning on demand.
+* **Execution Depth Guard**: To eliminate stack overflow risks during deep or cyclic element execution, the engine evaluates invocation depth against a `MaxDispatchDepth` threshold (set to 128 by default). Exceeding this boundary triggers an immediate `InvalidOperationException`.
 
-`VirtualBus` — это синхронная детерминированная шина, реализующая модель "Hierarchy of State". 
-
-### Основные концепции:
-- **Элементы (Elements)**: Атомарные логические юниты (Stateless Singletons). Они не хранят состояние в полях класса. Все состояние хранится в памяти шины.
-- **Компоненты (Components)**: Декларативные "чертежи" (Blueprints), которые рекурсивно раскрываются `BlueprintCompiler` в плоский список маршрутов.
-- **Дерево маршрутизации (`RoutingTrie`)**: Высокопроизводительный префиксный индекс. Приоритет разрешения: `Exact Match` > `Wildcard (*)` > `Deep Wildcard (**)` (на терминальном сегменте).
-
-### Архитектурные принципы ("Physics of Prius"):
-1. **Unidirectional Flow**: Сигналы текут строго сверху вниз. Метод `Notify` упразднен. Реакция на изменения происходит либо через прямой `Put`, либо через фоновое выполнение `Intents` (I/O), которые возвращают результат через `PutAbsolute` в корень шины.
-2. **Stateless Logic**: Элементы реактивны и работают с памятью шины через `ElementContext`. Контекст гарантирует доступ к памяти именно в той точке (mount point), где смонтирован элемент.
-3. **Implicit Memory Fallthrough ("No Wormholes")**: 
-   - Если элемент делает `context.Put("sub/path", value)` и по этому пути **не** зарегистрирован другой элемент — данные автоматически записываются в `BusMemoryNode` по этому пути.
-   - Это позволяет элементам использовать вложенные пути как хранилище состояния без явного объявления "баз данных".
-4. **Environment Merging**: Контекст предоставляет иерархическое окружение (`Env`) с приоритетами: 
-   `Dynamic Patch (вызов)` > `Static Env (монтирование)` > `Parent Env`.
-5. **Truthy Semantics**: Унифицированная логика `MapValue.AsBool()`:
-   - `true`: Непустая карта (наличие сигнала), число != 0, строка != "false" и не пустая.
-   - `false`: `Empty`, `0`, `""`, `"false"`.
-
-### Управление состоянием элементов:
-Для предотвращения конфликтов между скалярным значением узла (например, признак включения) и его дочерними узлами (данные), элементы используют соглашение о скрытых путях:
-- Состояние самого элемента (например, открыт/закрыт для `GateElement`) хранится в дочернем узле с префиксом `$` (например, `$Active`).
-- Это гарантирует, что запись данных в `gate/some/path` никогда не затрет управляющий флаг самого `gate`.
-
-### Многопоточность и Блокировки:
-- `VirtualBus` использует **реентерабельные блокировки** (`lock(object)`) на уровне узлов. 
-- Это позволяет элементу в процессе обработки `Put` вызывать `context.Get` или `context.Put` по своим же путям (реентерабельность), не вызывая дедлоков, при этом гарантируя атомарность изменений для внешних наблюдателей.
-
-## Бинарные данные
-- **`BinaryManager`**: Управление бинарными потоками с кешированием в памяти и вытеснением на диск.
-
-## Обработка данных
-- **`DataIntentsRegistry`**: Реестр намерений, реализующий очередь задач с поддержкой режима стазиса (`EnterStasis`), гарантирующего безопасное завершение текущих операций.
-- **`EmptyElement`**: Null Object паттерн для обработки несуществующих путей.
+## 5. Out-of-Band Execution and Auxiliary Subsystems
+* **Asynchronous Re-entry via PutAbsolute**: Because dispatch within the bus is strictly synchronous, prolonged infrastructure tasks or I/O operations are offloaded to external handlers. Once completed, these background workers execute `context.PutAbsolute(absolutePath, resultValue)`, which offloads the payload to the system `ThreadPool`. This initiates a fresh, top-down execution cycle starting directly from the root of the bus, preserving the downward flow model.
+* **Asynchronous Barriers and Lifecycle Coordination**: To handle deferred operations and external I/O, the system utilizes the concept of isolated asynchronous barriers. The `DataIntentsRegistry` is not a global executor but rather one of the specialized implementations of such a barrier (specifically for parent database mutations). Other independent asynchronous barriers will be deployed within the architecture to handle diverse external I/O channels. All existing and future barrier implementations are strictly required to honor core lifecycle commands: when transitioning to a `Stasis` state (via an `EnterStasis` invocation), they must block new incoming intentions and await the graceful completion of currently running tasks; when transitioning to a `Terminate` state, they must ensure an immediate and complete shutdown of all internal execution processes.
+* **BinaryManager**: Oversees large binary streams within the engine, utilizing an in-memory caching layer backed by automated disk eviction mechanisms to optimize memory usage.
+* **EmptyElement**: Implements the Null Object pattern to safely handle requests directed at invalid, unmapped, or empty path locations.

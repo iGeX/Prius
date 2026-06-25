@@ -17,12 +17,35 @@ public abstract class AbstractDataIntentsProcessorTests : RavenTestDriver
 
     protected static async Task WaitForCompletion(MockDataIntentsProvider provider, CancellationToken ct)
     {
-        var timeout = DateTime.UtcNow.AddSeconds(10);
-        while (provider.PendingCount > 0 && DateTime.UtcNow < timeout)
-            await Task.Delay(100, ct);
-
-        if (provider.PendingCount == 0)
-            await Task.Delay(500, ct);
+        var timeout = DateTime.UtcNow.AddSeconds(15);
+        while (DateTime.UtcNow < timeout)
+        {
+            var intents = provider.AllIntents;
+            if (intents.Count > 0)
+            {
+                var allDone = true;
+                foreach (var intent in intents)
+                {
+                    if (intent.Context is not MockElementContext context) 
+                        continue;
+                    
+                    var hasSuccess = context.PutCalls.ContainsKey(intent.SuccessPath);
+                    var hasFailure = context.PutCalls.ContainsKey(intent.FailurePath);
+                    if (hasSuccess || hasFailure) 
+                        continue;
+                        
+                    allDone = false;
+                    break;
+                }
+                if (allDone)
+                {
+                    await Task.Delay(50, ct);
+                    return;
+                }
+            }
+            await Task.Delay(50, ct);
+        }
+        throw new TimeoutException("Timed out waiting for intents to be processed.");
     }
 
     protected static async Task ExecuteTest(IDocumentStore store, MockDataIntentsProvider provider, Func<Task> assertion) =>
@@ -30,16 +53,14 @@ public abstract class AbstractDataIntentsProcessorTests : RavenTestDriver
     
     protected static async Task ExecuteTest(IDocumentStore store, MockDataIntentsProvider provider, BinaryManager binaryManager, Func<Task> assertion)
     {
-        using var processorCt = new CancellationTokenSource();
         using var assertCt = new CancellationTokenSource(TimeSpan.FromSeconds(15));
         var holder = new TestDocumentStoreHolder(store);
         var processor = new DataIntentsProcessor(holder, provider, binaryManager, NullLogger<DataIntentsProcessor>.Instance);
         
-        var task = processor.StartAsync(processorCt.Token);
+        await processor.StartAsync(CancellationToken.None);
         await WaitForCompletion(provider, assertCt.Token);
         
-        await processorCt.CancelAsync();
-        try { await task; } catch (OperationCanceledException) { }
+        await processor.StopAsync(CancellationToken.None);
 
         await assertion();
     }

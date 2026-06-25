@@ -1,4 +1,4 @@
-﻿using System.Reflection;
+using System.Reflection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -21,7 +21,10 @@ public sealed class Bootstrap
     private IServiceProvider? _serviceProvider;
     private readonly List<IPriusModule> _modules = [];
 
+    private TimeSpan _activeTimeout = TimeSpan.FromSeconds(30);
+
     public IMap StartupTargets { get; init; } = DictionaryMap.New;
+    public TimeSpan ModuleTimeout { get; init; } = TimeSpan.FromSeconds(30);
     
     public Bootstrap(IPackageRepository repository, IBootstrapRuntime runtime, IMetadataRegistry metadataRegistry)
     {
@@ -82,14 +85,25 @@ public sealed class Bootstrap
                 .Add(new BusConfigurationSource(_bus))
                 .Build();
 
+            _activeTimeout = ModuleTimeout;
+            var timeoutStr = config["Bootstrap:ModuleTimeout"];
+            if (!string.IsNullOrEmpty(timeoutStr))
+            {
+                if (TimeSpan.TryParse(timeoutStr, out var ts))
+                    _activeTimeout = ts;
+                else if (double.TryParse(timeoutStr, out var secs))
+                    _activeTimeout = TimeSpan.FromSeconds(secs);
+            }
+
             services.AddSingleton<IConfiguration>(config);
-            services.AddLogging(builder => builder.AddConfiguration(config.GetSection("Logging")).AddConsole());
+            services.AddLogging(builder => builder.AddConsole());
             
             var registry = new DataIntentsRegistry();
             registry.ExitStasis();
             services.AddSingleton<IDataIntentsRegistry>(registry);
             services.AddSingleton<IDataIntentsProvider>(registry);
             services.AddSingleton<IElementContext>(_bus);
+            services.AddSingleton<IBinaryManager>(new BinaryManager());
 
             foreach (var module in _modules) 
                 module.ConfigureServices(services, config);
@@ -99,7 +113,7 @@ public sealed class Bootstrap
             _bus.UpdateTrie(await BuildRoutingTrie(CancellationToken.None));
 
             foreach (var module in _modules) 
-                await ExecuteWithTimeout(ct => module.Activate(_serviceProvider, config, ct), TimeSpan.FromSeconds(30), "Activate");
+                await ExecuteWithTimeout(ct => module.Activate(_serviceProvider, config, ct), _activeTimeout, "Activate");
 
             await ExecuteEntry();
         }
@@ -214,7 +228,19 @@ public sealed class Bootstrap
         using var cts = new CancellationTokenSource(timeout);
         try
         {
-            await action(cts.Token);
+            var task = action(cts.Token);
+            if (task.IsCompleted)
+            {
+                await task;
+                return;
+            }
+
+            var delayTask = Task.Delay(timeout, cts.Token);
+            var completedTask = await Task.WhenAny(task.AsTask(), delayTask);
+            if (completedTask == delayTask)
+                throw new TimeoutException($"Module {name} timed out after {timeout.TotalSeconds}s");
+
+            await task;
         }
         catch (OperationCanceledException)
         {
@@ -245,8 +271,17 @@ public sealed class Bootstrap
         if (_serviceProvider?.GetService<IDataIntentsRegistry>() is DataIntentsRegistry registry) 
             registry.EnterStasis();
 
-        foreach (var module in _modules) 
-            await ExecuteWithTimeout(module.Stasis, TimeSpan.FromSeconds(30), "Stasis");
+        foreach (var module in _modules)
+        {
+            try
+            {
+                await ExecuteWithTimeout(module.Stasis, _activeTimeout, "Stasis");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SHUTDOWN ERROR] Module {module.GetType().Name} failed during stasis: {ex.Message}");
+            }
+        }
 
         _modules.Clear();
         _loadedAssemblies.Clear();

@@ -5,12 +5,14 @@ using Raven.Client.Documents.Subscriptions;
 namespace Prius.Data.RavenDB;
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Raven.Client.Documents.Session;
-using Raven.Client.Documents.Commands;
 using Raven.Client.Documents.Commands.Batches;
 using Raven.Client.Documents.Operations;
 using Sparrow.Json;
@@ -24,81 +26,265 @@ public sealed class DataIntentsProcessor(
     ILogger<DataIntentsProcessor> logger)
 {
     private const int MaxRetries = 3;
+    private readonly ConcurrentDictionary<string, (SubscriptionWorker<BlittableJsonReaderObject> Worker, Task ExecutionTask, CancellationTokenSource Cts)> _activeSubscriptions = new();
+    private CancellationTokenSource? _cts;
+    private Task? _processingTask;
 
-    public async Task StartAsync(CancellationToken ct) =>
-        await Task.WhenAll(
-            ProcessLoop(provider.PopLoad, HandleLoad, ct),
-            ProcessLoop(provider.PopQuery, HandleQuery, ct),
-            ProcessLoop(provider.PopStore, HandleStore, ct),
-            ProcessLoop(provider.PopPatch, HandlePatch, ct),
-            ProcessLoop(provider.PopDelete, HandleDelete, ct),
-            ProcessLoop(provider.PopIncrement, HandleIncrement, ct),
-            ProcessLoop(provider.PopGetCounters, HandleGetCounters, ct),
-            ProcessLoop(provider.PopGetAttachmentsMetadata, HandleGetAttachmentsMetadata, ct),
-            ProcessLoop(provider.PopStoreAttachment, HandleStoreAttachment, ct),
-            ProcessLoop(provider.PopGetAttachment, HandleGetAttachment, ct),
-            ProcessLoop(provider.PopDeleteAttachment, HandleDeleteAttachment, ct),
-            ProcessLoop(provider.PopNative, HandleNative, ct),
-            ProcessLoop(provider.PopSubscription, HandleSubscription, ct)
-        );
+    public async Task StartAsync(CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        
+        _cts = new CancellationTokenSource();
+        _processingTask = RunProcessingLoopAsync(_cts.Token);
+        
+        await Task.CompletedTask;
+    }
 
-    private async Task ProcessLoop<T>(Func<CancellationToken, ValueTask<T>> popFunc, Func<T, Task> handler, CancellationToken ct) =>
+    private async Task RunProcessingLoopAsync(CancellationToken ct) =>
         await Task.Factory.StartNew(async () => 
         {
             while (!ct.IsCancellationRequested)
             {
-                var intent = await popFunc(ct);
-                var retryCount = 0;
+                var tx = await provider.PopTx(ct);
+                await ProcessTransaction(tx, ct);
+            }
+        }, ct, TaskCreationOptions.LongRunning, TaskScheduler.Default).Unwrap();
 
-                while (true)
+    public async Task StopAsync(CancellationToken ct)
+    {
+        if (_cts != null)
+            await _cts.CancelAsync();
+
+        if (_processingTask != null)
+        {
+            try
+            {
+                await _processingTask.WaitAsync(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("[SHUTDOWN] DataIntentsProcessor stasis waiting timed out or was cancelled.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SHUTDOWN] DataIntentsProcessor encountered an error during stasis: {ex}");
+            }
+        }
+
+        try
+        {
+            await StopAllSubscriptionsAsync(ct);
+        }
+        catch (OperationCanceledException)
+        {
+            Console.WriteLine("[SHUTDOWN] Stopping subscriptions timed out or was cancelled.");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[SHUTDOWN] Encountered an error stopping subscriptions: {ex}");
+        }
+
+        _cts?.Dispose();
+    }
+
+    private async Task StopAllSubscriptionsAsync(CancellationToken ct)
+    {
+        var active = _activeSubscriptions.Values.ToArray();
+        _activeSubscriptions.Clear();
+
+        foreach (var item in active)
+        {
+            try
+            {
+                await item.Cts.CancelAsync();
+                await item.Worker.DisposeAsync();
+
+                await item.ExecutionTask.WaitAsync(ct);
+            }
+            catch (OperationCanceledException)
+            {
+                Console.WriteLine("[SHUTDOWN] Subscription worker stasis waiting timed out or was cancelled.");
+                break;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[SHUTDOWN] Encountered an error stopping subscription worker: {ex}");
+            }
+            finally
+            {
+                item.Cts.Dispose();
+            }
+        }
+    }
+
+    private async Task ProcessTransaction(DataTransaction tx, CancellationToken ct)
+    {
+        using var session = holder.Store.OpenAsyncSession();
+        session.Advanced.UseOptimisticConcurrency = true;
+
+        var queuedWrites = new List<IIntent>();
+        var streamsToDispose = new List<Stream>();
+        Exception? failureException = null;
+        
+        foreach (var intent in tx.Intents)
+        {
+            if (ct.IsCancellationRequested)
+                break;
+
+            if (logger.IsEnabled(LogLevel.Debug))
+                logger.LogDebug("Processing intent: {IntentInfo}", GetFullIntentInfo(intent));
+
+            try
+            {
+                if (IsWrite(intent))
                 {
-                    try
+                    await QueueWrite(session, intent, streamsToDispose);
+                    queuedWrites.Add(intent);
+                }
+                else
+                    await HandleReadOrImmediate(session, intent);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Transaction step failed for intent: {IntentInfo}", GetFullIntentInfo(intent));
+                failureException = ex;
+                
+                if (!IsWrite(intent)) 
+                    ReportFailure(intent, ex);
+
+                break;
+            }
+        }
+        
+        if (failureException is null && queuedWrites.Count > 0)
+        {
+            var retryCount = 0;
+            while (true)
+            {
+                try
+                {
+                    await session.SaveChangesAsync(ct);
+                    
+                    foreach (var intent in queuedWrites) 
+                        ReportSuccess(intent, true);
+                    break;
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex) when (IsFatal(ex))
+                {
+                    logger.LogError(ex, "Fatal error committing transaction");
+                    failureException = ex;
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    logger.LogWarning(ex, "Transient error committing transaction, retrying...");
+                    retryCount++;
+                    if (retryCount >= MaxRetries)
                     {
-                        await handler(intent);
+                        failureException = ex;
                         break;
                     }
-                    catch (OperationCanceledException)
-                    {
-                        if (logger.IsEnabled(LogLevel.Debug))
-                            logger.LogDebug("Intent {IntentType} was cancelled", intent?.GetType().Name);
-                        break;
-                    }
-                    catch (Exception ex) when (IsFatal(ex))
-                    {
-                        if (intent is IIntent ii)
-                        {
-                            logger.LogError(ex, "Fatal error processing intent {IntentInfo}", GetFullIntentInfo(intent));
-                            ReportFailure(ii, ex);
-                        }
-                        break;
-                    }
-                    catch (Exception ex)
-                    {
-                        retryCount++;
-                        if (retryCount >= MaxRetries)
-                        {
-                            if (intent is IIntent ii)
-                            {
-                                if (logger.IsEnabled(LogLevel.Debug))
-                                {
-                                    logger.LogDebug(ex, "Failed to process intent {IntentInfo} after {RetryCount} retries",
-                                        GetFullIntentInfo(intent), MaxRetries);
-                                }
 
-                                ReportFailure(ii, ex);
-                            }
-                            break;
-                        }
-
-                        if (intent is not null && logger.IsEnabled(LogLevel.Trace))
-                            logger.LogTrace(ex, "Retry {RetryCount} for intent {IntentInfo}", retryCount, GetFullIntentInfo(intent));
-
-                        var delay = TimeSpan.FromMilliseconds(Math.Pow(2, retryCount) * 100);
-                        await Task.Delay(delay, ct);
-                    }
+                    var delay = TimeSpan.FromMilliseconds(Math.Pow(2, retryCount) * 100);
+                    await Task.Delay(delay, ct);
                 }
             }
-        }, ct, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+        }
+        
+        foreach (var stream in streamsToDispose)
+        {
+            try
+            {
+                await stream.DisposeAsync();
+            }
+            catch (Exception ex)
+            {
+                logger.LogWarning(ex, "Failed to dispose stream for StoreAttachmentIntent");
+            }
+        }
+
+        if (failureException is null)
+            return;
+        
+        foreach (var intent in tx.Intents)
+        {
+            if (IsWrite(intent))
+                ReportFailure(intent, failureException);
+        }
+    }
+
+    private static bool IsWrite(IIntent intent) => intent switch
+    {
+        StoreIntent => true,
+        PatchIntent => true,
+        DeleteIntent => true,
+        IncrementIntent => true,
+        StoreAttachmentIntent => true,
+        DeleteAttachmentIntent => true,
+        NativeIntent => true,
+        _ => false
+    };
+
+    private async Task QueueWrite(IAsyncDocumentSession session, IIntent intent, List<Stream> streamsToDispose)
+    {
+        switch (intent)
+        {
+            case StoreIntent store:
+                await QueueStore(session, store);
+                break;
+            case PatchIntent patch:
+                await QueuePatch(session, patch);
+                break;
+            case DeleteIntent delete:
+                await QueueDelete(session, delete);
+                break;
+            case IncrementIntent increment:
+                await QueueIncrement(session, increment);
+                break;
+            case StoreAttachmentIntent storeAttachment:
+                await QueueStoreAttachment(session, storeAttachment, streamsToDispose);
+                break;
+            case DeleteAttachmentIntent deleteAttachment:
+                await QueueDeleteAttachment(session, deleteAttachment);
+                break;
+            case NativeIntent native:
+                await HandleNative(session, native);
+                break;
+            default:
+                throw new ArgumentException($"Unknown write intent type: {intent.GetType().Name}");
+        }
+    }
+
+    private async Task HandleReadOrImmediate(IAsyncDocumentSession session, IIntent intent)
+    {
+        switch (intent)
+        {
+            case LoadIntent load:
+                await HandleLoad(session, load);
+                break;
+            case QueryIntent query:
+                await HandleQuery(session, query);
+                break;
+            case GetCountersIntent getCounters:
+                await HandleGetCounters(session, getCounters);
+                break;
+            case GetAttachmentsMetadataIntent getAttachmentsMetadata:
+                await HandleGetAttachmentsMetadata(session, getAttachmentsMetadata);
+                break;
+            case GetAttachmentIntent getAttachment:
+                await HandleGetAttachment(session, getAttachment);
+                break;
+            case SubscriptionIntent subscription:
+                await HandleSubscription(subscription);
+                break;
+            default:
+                throw new ArgumentException($"Unknown read/immediate intent type: {intent.GetType().Name}");
+        }
+    }
 
     private static bool IsFatal(Exception ex) => ex switch
     {
@@ -130,7 +316,12 @@ public sealed class DataIntentsProcessor(
         _ => intent.GetType().Name
     };
     
-    private static void ReportSuccess(IIntent i, MapValue value) => i.Context.Put(i.SuccessPath, value);
+    private static void ReportSuccess(IIntent i, MapValue value)
+    {
+        var sysCtx = (ISystemElementContext)i.Context;
+        var absolutePath = new MapPath(sysCtx.AbsolutePath.AsSpan()) + new MapPath(i.SuccessPath.AsSpan());
+        sysCtx.PutAbsolute(absolutePath, value);
+    }
     
     private static void ReportFailure(IIntent i, string message, string type)
     {
@@ -139,18 +330,19 @@ public sealed class DataIntentsProcessor(
             ("Message", message), 
             ("Type", type)
         ]);
-        i.Context.Put(i.FailurePath, failureMap.AsMapValue());
+        
+        var sysCtx = (ISystemElementContext)i.Context;
+        var absolutePath = new MapPath(sysCtx.AbsolutePath.AsSpan()) + new MapPath(i.FailurePath.AsSpan());
+        sysCtx.PutAbsolute(absolutePath, failureMap.AsMapValue());
     }
 
     private static void ReportFailure(IIntent i, Exception ex) => ReportFailure(i, ex.Message, ex.GetType().Name);
     
-    private async Task HandleQuery(QueryIntent i)
+    private async Task HandleQuery(IAsyncDocumentSession session, QueryIntent i)
     {
         var (rql, parameters) = RqlBuilder.Build(i.QueryMap);
         if (string.IsNullOrEmpty(rql))
             return;
-
-        using var session = holder.Store.OpenAsyncSession(new SessionOptions { NoTracking = true });
         
         var query = session.Advanced.AsyncRawQuery<BlittableJsonReaderObject>(rql);
         foreach (var pair in parameters)
@@ -231,12 +423,11 @@ public sealed class DataIntentsProcessor(
                 var idBuilder = new StringBuilder();
                 foreach (var groupKey in groupByMap.Keys(true))
                 {
-                    if (json.TryGet(groupKey, out object val) && val != null)
-                    {
-                        if (idBuilder.Length > 0) 
-                            idBuilder.Append('/');
-                        idBuilder.Append(val);
-                    }
+                    if (!json.TryGet(groupKey, out object val) || val == null) 
+                        continue;
+                    if (idBuilder.Length > 0) 
+                        idBuilder.Append('/');
+                    idBuilder.Append(val);
                 }
                 id = idBuilder.ToString();
             }
@@ -283,9 +474,8 @@ public sealed class DataIntentsProcessor(
         ]);
     }
 
-    private async Task HandleLoad(LoadIntent i)
+    private async Task HandleLoad(IAsyncDocumentSession session, LoadIntent i)
     {
-        using var session = holder.Store.OpenAsyncSession(new SessionOptions { NoTracking = true });
         var doc = await session.LoadAsync<BlittableJsonReaderObject>(i.DocumentId, i.Token);
 
         if (doc is null)
@@ -298,54 +488,44 @@ public sealed class DataIntentsProcessor(
         ReportSuccess(i, map.AsMapValue());
     }
 
-    private async Task HandleDelete(DeleteIntent i)
+    private Task QueueDelete(IAsyncDocumentSession session, DeleteIntent i)
     {
-        using var session = holder.Store.OpenAsyncSession();
-        session.Advanced.UseOptimisticConcurrency = true;
-
         if (!string.IsNullOrEmpty(i.ChangeVector))
             session.Advanced.Defer(new DeleteCommandData(i.DocumentId, i.ChangeVector));
         else
             session.Delete(i.DocumentId);
-
-        await session.SaveChangesAsync(i.Token);
-        ReportSuccess(i, true);
+        return Task.CompletedTask;
     }
 
-    private async Task HandleStore(StoreIntent i)
+    private async Task QueueStore(IAsyncDocumentSession session, StoreIntent i)
     {
-        if (i.Document.DeepGet("@metadata/@collection").IsEmpty)
-        {
-            ReportFailure(i, "No @metadata/@collection specified", "InvalidState");
-            return;
-        }
-        
+        if (i.Document.DeepGet("@metadata/@collection").IsEmpty) 
+            throw new InvalidOperationException("No @metadata/@collection specified");
+
         if (logger.IsEnabled(LogLevel.Debug))
-            logger.LogDebug("Attempting to store document: {Id}", i.Document.Serialize());
+            logger.LogDebug("Queuing store document: {Id}", i.Document.Serialize());
             
-        using var session = holder.Store.OpenAsyncSession();
-        session.Advanced.UseOptimisticConcurrency = true;
-        
+        var id = i.Document.DeepGet("@metadata/@id").AsString();
         var changeVector = i.Document.DeepGet("@metadata/@change-vector").AsString();
-        var command = new PutCommandData(i.Document.DeepGet("@metadata/@id").AsString(), changeVector, i.Document.AsDynamicJson());
-        session.Advanced.Defer(command);
         
-        await session.SaveChangesAsync(i.Token);
-        
-        if (logger.IsEnabled(LogLevel.Debug))
-            logger.LogDebug("Successfully saved document: {Id}", i.Document.Serialize());
-        
-        ReportSuccess(i, true);
+        using var stream = new MemoryStream(Encoding.UTF8.GetBytes(i.Document.Serialize()));
+        var blittable = await session.Advanced.Context.ReadForMemoryAsync(stream, id, i.Token);
+
+        if (!string.IsNullOrEmpty(changeVector))
+        {
+            await session.StoreAsync(blittable, changeVector, id);
+        }
+        else
+        {
+            await session.StoreAsync(blittable, id);
+        }
     }
 
-    private async Task HandlePatch(PatchIntent i)
+    private Task QueuePatch(IAsyncDocumentSession session, PatchIntent i)
     {
-        using var session = holder.Store.OpenAsyncSession();
-        
         var (script, values) = CreatePatchRequest(i.Path, i.Value);
         session.Advanced.Defer(new PatchCommandData(i.DocumentId, null, new PatchRequest { Script = script, Values = values }));
-        await session.SaveChangesAsync(i.Token);
-        ReportSuccess(i, true);
+        return Task.CompletedTask;
     }
 
     private static (string Script, Dictionary<string, object> Values) CreatePatchRequest(MapPath path, MapValue value)
@@ -389,17 +569,14 @@ public sealed class DataIntentsProcessor(
         return (scriptBuilder.ToString(), values);
     }
     
-    private async Task HandleIncrement(IncrementIntent i)
+    private Task QueueIncrement(IAsyncDocumentSession session, IncrementIntent i)
     {
-        using var session = holder.Store.OpenAsyncSession();
         session.CountersFor(i.DocumentId).Increment(i.CounterName, i.Delta);
-        await session.SaveChangesAsync(i.Token);
-        ReportSuccess(i, true);
+        return Task.CompletedTask;
     }
 
-    private async Task HandleGetCounters(GetCountersIntent i)
+    private async Task HandleGetCounters(IAsyncDocumentSession session, GetCountersIntent i)
     {
-        using var session = holder.Store.OpenAsyncSession(new SessionOptions { NoTracking = true });
         var counters = await session.CountersFor(i.DocumentId).GetAllAsync();
         
         var result = DictionaryMap.New;
@@ -409,16 +586,11 @@ public sealed class DataIntentsProcessor(
         ReportSuccess(i, result.AsMapValue());
     }
     
-    private async Task HandleGetAttachmentsMetadata(GetAttachmentsMetadataIntent i)
+    private async Task HandleGetAttachmentsMetadata(IAsyncDocumentSession session, GetAttachmentsMetadataIntent i)
     {
-        var command = new GetDocumentsCommand(holder.Store.Conventions, i.DocumentId, null, metadataOnly: true);
-
-        using var context = JsonOperationContext.ShortTermSingleUse();
-        await holder.Store.GetRequestExecutor().ExecuteAsync(command, context, null , i.Token);
+        var doc = await session.LoadAsync<BlittableJsonReaderObject>(i.DocumentId, i.Token);
         
-        if (command.Result.Results is null || 
-            command.Result.Results.Length == 0 ||
-            command.Result.Results[0] is not BlittableJsonReaderObject doc ||
+        if (doc is null || 
             !doc.TryGet("@metadata", out BlittableJsonReaderObject metadata) || 
             !metadata.TryGet("@attachments", out BlittableJsonReaderArray attachments))
         {
@@ -440,21 +612,15 @@ public sealed class DataIntentsProcessor(
         ReportSuccess(i, result.AsMapValue());
     }
 
-    private async Task HandleStoreAttachment(StoreAttachmentIntent i)
+    private Task QueueStoreAttachment(IAsyncDocumentSession session, StoreAttachmentIntent i, List<Stream> streamsToDispose)
     {
-        await using (i.Stream)
-        {
-            using var session = holder.Store.OpenAsyncSession();
-            session.Advanced.Attachments.Store(i.DocumentId, i.Name, i.Stream, i.ContentType);
-            await session.SaveChangesAsync(i.Token);
-            ReportSuccess(i, true);
-        }
+        session.Advanced.Attachments.Store(i.DocumentId, i.Name, i.Stream, i.ContentType);
+        streamsToDispose.Add(i.Stream);
+        return Task.CompletedTask;
     }
 
-    private async Task HandleGetAttachment(GetAttachmentIntent i)
+    private async Task HandleGetAttachment(IAsyncDocumentSession session, GetAttachmentIntent i)
     {
-        using var session = holder.Store.OpenAsyncSession();
-    
         using var attachmentResult = await session.Advanced.Attachments.GetAsync(i.DocumentId, i.Name, i.Token);
         if (attachmentResult == null)
         {
@@ -476,51 +642,91 @@ public sealed class DataIntentsProcessor(
         ReportSuccess(i, DictionaryMap.New.With(binaryPathStr, metadataMap.AsMapValue()).AsMapValue());
     }
 
-    private async Task HandleDeleteAttachment(DeleteAttachmentIntent i)
+    private Task QueueDeleteAttachment(IAsyncDocumentSession session, DeleteAttachmentIntent i)
     {
-        using var session = holder.Store.OpenAsyncSession();
         session.Advanced.Attachments.Delete(i.DocumentId, i.Name);
-        await session.SaveChangesAsync(i.Token);
-        ReportSuccess(i, true);
+        return Task.CompletedTask;
     }
 
-    private async Task HandleNative(NativeIntent i) => await i.Action(holder.Store, i);
+    private static async Task HandleNative(IAsyncDocumentSession session, NativeIntent i) => await i.Action(session, i);
     
-    private Task HandleSubscription(SubscriptionIntent i)
+    private async Task HandleSubscription(SubscriptionIntent i)
     {
-        try
-        {
-            var options = new SubscriptionWorkerOptions(i.TopicName)
-            {
-                Strategy = SubscriptionOpeningStrategy.WaitForFree
-            };
+        var topic = i.TopicName;
             
-            _ = Task.Factory.StartNew(async () =>
+        if (_activeSubscriptions.TryGetValue(topic, out var existing))
+        {
+            if (!existing.ExecutionTask.IsCompleted)
+            {
+                if (!existing.Cts.Token.IsCancellationRequested)
+                {
+                    ReportSuccess(i, true);
+                    return;
+                }
+
+                try
+                {
+                    await existing.ExecutionTask;
+                }
+                catch
+                {
+                    /* ignore */
+                }
+            }
+                
+            _activeSubscriptions.TryRemove(topic, out _);
+            existing.Cts.Dispose();
+        }
+
+        var options = new SubscriptionWorkerOptions(topic)
+        {
+            Strategy = SubscriptionOpeningStrategy.WaitForFree
+        };
+
+        var cts = CancellationTokenSource.CreateLinkedTokenSource(i.Token);
+        var worker = holder.Store.Subscriptions.GetSubscriptionWorker<BlittableJsonReaderObject>(options);
+            
+        var executionTask = Task.Run(async () =>
+        {
+            var retryDelay = TimeSpan.FromSeconds(2);
+            while (!cts.Token.IsCancellationRequested)
             {
                 try
                 {
-                    await using var worker = holder.Store.Subscriptions.GetSubscriptionWorker<BlittableJsonReaderObject>(options);
                     await worker.Run(async batch =>
                     {
+                        var sysCtx = (ISystemElementContext)i.Context;
                         foreach (var item in batch.Items)
                         {
                             var map = await item.Result.AsJsonReaderMap();
-                            i.Context.Put($"{i.SubscriptionPath}/{item.Id}", map.AsMapValue());
+                            var relativePath = new MapPath(i.SubscriptionPath.AsSpan()) + new MapPath(item.Id.AsSpan());
+                            var absolutePath = new MapPath(sysCtx.AbsolutePath.AsSpan()) + relativePath;
+                            sysCtx.PutAbsolute(absolutePath, map.AsMapValue());
                         }
-                    }, i.Token);
+                    }, cts.Token);
+                }
+                catch (OperationCanceledException) when (cts.Token.IsCancellationRequested)
+                {
+                    break;
                 }
                 catch (Exception ex)
                 {
-                    logger.LogError(ex, "Subscription worker failed for topic {Topic}", i.TopicName);
+                    logger.LogError(ex, "Subscription worker error for topic {Topic}, retrying in {Delay}s...", topic, retryDelay.TotalSeconds);
+                    try
+                    {
+                        await Task.Delay(retryDelay, cts.Token);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        break;
+                    }
+                        
+                    retryDelay = TimeSpan.FromSeconds(Math.Min(30, retryDelay.TotalSeconds * 2));
                 }
-            }, i.Token, TaskCreationOptions.LongRunning, TaskScheduler.Default);
+            }
+        }, cts.Token);
 
-            ReportSuccess(i, true);
-            return Task.CompletedTask;
-        }
-        catch (Exception exception)
-        {
-            return Task.FromException(exception);
-        }
+        _activeSubscriptions[topic] = (worker, executionTask, cts);
+        ReportSuccess(i, true);
     }
 }
