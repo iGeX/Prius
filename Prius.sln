@@ -50,6 +50,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Docs", "Docs", "{206E7C00-7
 		Docs\PriusCodingGuidelines.md = Docs\PriusCodingGuidelines.md
 		Docs\PriusCoreGuidelines.md = Docs\PriusCoreGuidelines.md
 		Docs\PriusEngineGuidelines.md = Docs\PriusEngineGuidelines.md
+		Docs\PriusMetadataGuidelines.md = Docs\PriusMetadataGuidelines.md
 	EndProjectSection
 EndProject
 Global

@@ -7,8 +7,16 @@ namespace Prius.Data.RavenDB.Tests;
 
 public abstract class AbstractDataIntentsProcessorTests : RavenTestDriver
 {
-    static AbstractDataIntentsProcessorTests() => 
-        ConfigureServer(new TestServerOptions { Licensing = { ThrowOnInvalidOrMissingLicense = false } });
+    static AbstractDataIntentsProcessorTests()
+    {
+        try
+        {
+            ConfigureServer(new TestServerOptions { Licensing = { ThrowOnInvalidOrMissingLicense = false } });
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
 
     private class TestDocumentStoreHolder(IDocumentStore store) : IDocumentStoreHolder
     {

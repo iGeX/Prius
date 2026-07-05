@@ -1,4 +1,4 @@
-﻿using Sparrow.Json;
+using Sparrow.Json;
 
 namespace Prius.Data.RavenDB;
 
@@ -58,5 +58,24 @@ public static class RavenJsonExtensions
         }
 
         return result;
+    }
+
+    public static Dictionary<string, object?> ToDictionary(this IMap map)
+    {
+        var dict = new Dictionary<string, object?>();
+        foreach (var key in map.Keys())
+        {
+            var val = map[key];
+            val.Switch(
+                onEmpty: _ => dict[key] = null,
+                onMap: m => dict[key] = ToDictionary(m),
+                onString: s => dict[key] = s,
+                onLong: l => dict[key] = l,
+                onBool: b => dict[key] = b,
+                onDecimal: d => dict[key] = d,
+                onDateTimeOffset: dto => dict[key] = dto
+            );
+        }
+        return dict;
     }
 }

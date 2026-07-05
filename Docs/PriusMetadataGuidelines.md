@@ -3,19 +3,13 @@
 This document defines the metadata management architecture, rules for system evolution via migrations, development sandboxes, and the deployment protocol.
 
 ## 1. Decoupling Metadata Loops (SRP)
-System metadata is strictly separated into two independent loops, each managed by its own dedicated manager class:
+System metadata is strictly separated into two independent loops:
 
 ### A. Business Logic Loop (System Schema)
 * **Purpose**: Describes modules, component blueprints, and archetype base architecture.
-* **Responsible Class**: `SystemSchemaMetadataManager`.
-* **Example Commands**: `RegisterModule`, `DefineComponent`, `MountComponentToArchetype`.
-* **Result**: A snapshot of the system's business logic for a specific version (`SystemSchemaVersion`).
 
 ### B. Deployment Loop (Deployment / CI/CD)
 * **Purpose**: Describes the physical topology, node instances, environment overrides, and change subscriptions.
-* **Responsible Class**: `DeploymentMetadataManager`.
-* **Example Commands**: `RegisterNodeInstance`, `SetNodeEnvOverride`, `ScaleArchetypeReplicas`.
-* **Result**: An active infrastructure deployment map mapped to a specific `SystemSchemaVersion`.
 
 ---
 

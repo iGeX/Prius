@@ -11,8 +11,16 @@ namespace Prius.Data.RavenDB.Tests;
 [Collection(nameof(RavenPackageRepositoryTests))]
 public sealed class RavenPackageRepositoryTests : RavenTestDriver
 {
-    static RavenPackageRepositoryTests() => 
-        ConfigureServer(new TestServerOptions { Licensing = { ThrowOnInvalidOrMissingLicense = false } });
+    static RavenPackageRepositoryTests()
+    {
+        try
+        {
+            ConfigureServer(new TestServerOptions { Licensing = { ThrowOnInvalidOrMissingLicense = false } });
+        }
+        catch (InvalidOperationException)
+        {
+        }
+    }
 
     private sealed class TestDocumentStoreHolder(IDocumentStore store) : IDocumentStoreHolder
     {
